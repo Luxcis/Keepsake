@@ -1,0 +1,146 @@
+# 拾光集 Keepsake · 我们的旅行纪念册
+
+私人旅行纪念网站（V1.0）：以旅行地点与时间为主线，把照片、旅行故事、重要日子与生日信组织成一段可浏览、可持续补充的数字纪念册。首个交付目标：**2026-11-22 生日当天可稳定访问**。
+
+- 设计/开发计划全文：[docs/plan.docx](docs/plan.docx)
+- UI 视觉方向（已确认稿）：[docs/demo.html](docs/demo.html)
+
+## 技术栈
+
+| 层级 | 选型 |
+| --- | --- |
+| 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS 4 + GSAP |
+| 后端 | Go 1.26 + chi（路由）+ `modernc.org/sqlite`（纯 Go 驱动）|
+| 缓存/会话 | Redis 8（go-redis/v9），可缺失运行（降级模式）|
+| 对象存储 | 腾讯 COS（COS 链路阶段接入，Bucket 私有 + 短时效签名 URL） |
+| 部署 | Docker Compose：web(Nginx) + api(Go) + redis |
+
+## 目录结构
+
+```
+├─ docs/plan.docx    设计与实施计划（含 8 周期排期与验收清单）
+├─ docs/demo.html    首页视觉方向（配色/排版动效参考稿）
+├─ server/           Go API
+│  ├─ cmd/server/            启动入口（配置 → 迁移 → 路由 → 优雅退出）
+│  ├─ internal/config/       环境变量配置
+│  ├─ internal/store/        SQLite 连接 + 迁移器 + 显式 SQL 查询
+│  │  └─ migrations/0001_init.sql   核心八表 + 索引 + 站点设置种子
+│  ├─ internal/handlers/     JSON 接口（统一 envelope / 501 占位策略）
+│  ├─ internal/cachex/       Redis 封装（探活语义）
+│  └─ internal/server/       chi 路由与中间件（slog 日志 / CORS / Recoverer）
+├─ web/              Vue 3 SPA（页面路由即计划 §2 的七大页面）
+├─ deploy/nginx/     Nginx 站点配置（dist + /api 反代）
+├─ data/             SQLite 持久化目录（挂载进 api 容器，勿放共享盘）
+└─ docker-compose.yml
+```
+
+## 页面路由（阶段交付：路由骨架）
+
+| 路由 | 页面 |
+| --- | --- |
+| `/` | 首页（主视觉 + CTA） |
+| `/trips` · `/trips/:id` | 旅行足迹 · 旅行详情 |
+| `/photos` | 照片墙（COS 阶段接入数据） |
+| `/timeline` | 时光轴 |
+| `/letter` | 生日信（门禁阶段接入数据） |
+| `/admin/login` · `/admin` | 管理登录 · 后台（认证阶段接入） |
+
+## 本地开发
+
+```bash
+# 1. 后端（数据库自动建表在 ./data/journey.db）
+make dev-api          # 或: cd server && DATA_DIR=$PWD/data go run ./cmd/server
+
+# 2. 前端（另一终端）
+make dev-web          # http://localhost:5173，/api 自动代理到 :8080
+```
+
+接口自检：`curl http://localhost:8080/healthz`
+
+## 引导：管理员与站点访问门禁
+
+```bash
+# 创建管理员（Argon2id 哈希入库）
+make create-admin ADMIN_USERNAME=admin ADMIN_PASSWORD='你的管理密码' \
+                 ADMIN_SITE_PASSWORD='给TA的访问口令'   # 可选：同时启门禁
+
+# 或在容器运行中引导：
+docker compose exec -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='***' -e ADMIN_SITE_PASSWORD='***' \
+  api /usr/local/bin/server -create-admin
+```
+
+- `ADMIN_SITE_PASSWORD` 未设置时，门禁处于“开放模式”，`/api/site/settings` 中 `gate_enabled: false`，日志有明确告警；随时可通过 `PUT /api/admin/site/settings {"site_password":"..."}` 启用。
+- 管理员会话 24h，门禁会话 30 天，均为 HttpOnly + SameSite=Lax Cookie；错误请求体大小受限，登录失败 5 次/15 分钟即限速（Redis 固定窗口）。
+
+## Docker 本地跑通
+
+```bash
+cp .env.example .env   # 按需修改（本地 http 联调保持 COOKIE_SECURE=false）
+make up                # 构建并启动 web/api/redis
+#   打开 http://localhost:8088 （Nginx → SPA + /api 反代）
+curl http://localhost:8088/api/site/settings
+make down
+```
+
+> Linux 服务器上如遇 SQLite 写入权限问题：`sudo chown -R 10001 ./data`（容器内以 uid 10001 运行）。
+
+## 已实现接口（后端基础阶段，11/05–11/08）
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/healthz` | 公开 | db / redis 探活 |
+| GET | `/api/site/settings` | 公开 | 白名单字段 + `gate_enabled` |
+| POST | `/api/site/unlock` | 公开（限速） | 访问口令 → 门禁会话 |
+| POST | `/api/auth/login`·`/logout` | 公开（限速） | Argon2id 校验 + 会话 |
+| GET | `/api/auth/me` | 管理员 | 当前账号 |
+| GET | `/api/trips`·`/trips/{id}` | 门禁 | 发布内容读取 |
+| GET | `/api/timeline` | 门禁 | 时光轴事件 |
+| GET | `/api/letter` | 门禁 | 生日信 |
+| POST/PUT/DELETE | `/api/admin/trips`（含 `{id}/locations`、`{id}/albums`） | 管理员 | 旅行/地点/相册 CRUD |
+| POST/PUT/DELETE | `/api/admin/timeline` | 管理员 | 时光轴 CRUD |
+| PUT | `/api/admin/letter` | 管理员 | 信件 upsert |
+| PUT | `/api/admin/site/settings` | 管理员 | 白名单字段 + 口令哈希化 |
+| — | `/api/trips/{id}/photos`、`/api/admin/uploads/sign`、`/api/admin/photos/confirm` | — | **501**：COS 与后台阶段（11/13–11/15）实现 |
+
+### 安全语义（计划 §3.2 / §5.1）
+
+- **失败关闭**：`REDIS_ADDR` 已配置但不可达时，登录/解锁/管理端会话读取返回 `503 backend_unavailable`，不放行。
+- **降级模式**：未配置 Redis 时使用进程内存会话与限速（仅限开发；生产必须在 `.env` 配 `REDIS_ADDR`）。
+- **CSRF**：SameSite=Lax Cookie + “不安全方法携带 Origin/Referer 时必须同源（感知 X-Forwarded-Proto）”双层防护。
+
+## 照片上传链路（COS，11/13–15 阶段）
+
+```text
+选择文件 → POST /api/admin/uploads/sign（校验类型/大小，服务端生成 Key）
+        → 浏览器 XHR 直传 COS（PUT，进度条） → POST /api/admin/photos/confirm
+        （服务端 HEAD 校验真实存在/大小/类型后才入库）
+删除：先删数据库关联 → cos_delete_tasks 表入队 → 后台 janitor 60s 轮询补偿删对象（404 幂等）
+展示：GET /api/trips/{id}/photos 输出短时效签名 URL；缩略图 = 原图 URL + imageMogr2 处理参数
+```
+
+启用前必须在腾讯云 COS 控制台完成（计划 §6.2 风险项）：
+
+1. Bucket 权限设为**私有**（只允许本服务密钥与预签名访问）。
+2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`，最大 25MB。
+3. 建议开启 COS 版本控制/生命周期策略（照片不可再生，备份 §5.3）。
+
+之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build api`，照片上传立刻可用；未配置时上传接口返回语义化的 `503 cos_not_configured`。
+
+## 阶段路线（→ 计划 §6 排期）
+
+- [x] **11/03–11/04 脚手架**：仓库骨架、配置样例、页面路由、Docker/Nginx 本地跑通
+- [x] **11/05–11/08 后端基础**：门禁（site/unlock）、Argon2id 认证 + 限流 + 会话、旅行/地点/相册/时光轴 CRUD、管理端写接口
+- [x] **11/09–12 前端核心**：七页对接真实数据、门禁解锁卡片、信件揭晓交互、灯箱组件、admin 会话态
+- [x] **11/13–15 COS 与后台**：预签名直传（XHR 进度）→ HEAD 确认 → 照片排序/说明/删除（COS 对象补偿清理）、管理端五个维护页、照片墙按旅行分组 + 灯箱
+- [x] **11/16–18 视觉与动效**：GSAP 动态加载（motion-ready 防闪 / fromTo 终态 / reduced-motion 与加载失败全降级）、首屏入场、卡片错落、时间轴 scrub、信封展开、灯箱过渡、360px 防溢出
+- [ ] 11/19–11/20 部署与测试：HTTPS、备份恢复演练、权限异常测试
+- [ ] 11/21 内容冻结：录入真实照片与旅行信息
+- [ ] 11/22 正式交付
+
+## 工程约定（摘自计划）
+
+- 应用层记录 **UTC**（SQLite 中 TEXT RFC3339 / YYYY-MM-DD），展示层按 Asia/Shanghai 格式化。
+- SQLite 开启 WAL + busy_timeout，连接池保守；备份使用 Online Backup API / `.backup`，勿复制裸 `.db`。
+- 对象 Key 服务端生成；COS SecretId/Key 严禁出服务端；签名 URL 短时效。
+- 日志（slog JSON）不记录密码、Cookie、签名 URL。
+- 当前脚手架运行在**降级模式**检查点见 `/healthz`：`redis: disabled|unreachable` 为预期内。

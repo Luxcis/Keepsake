@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#f5f1e8" />
+<title>拾光集 Keepsake — 我们的旅行纪念册</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: { paper:'#F5F1E8', ink:'#263C3B', moss:'#667C6C', clay:'#B58D62', muted:'#817D72' }, fontFamily: { serif:['Georgia','Noto Serif SC','serif'], sans:['Inter','Noto Sans SC','sans-serif'] }, boxShadow: { soft:'0 18px 55px rgba(49,55,45,.10)' } } } }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<style>
+  :root{--paper:#f5f1e8;--ink:#263c3b;--moss:#667c6c;--clay:#b58d62;--muted:#817d72;--line:#ded8cb}
+  *{box-sizing:border-box} html{scroll-behavior:smooth} body{background:var(--paper);color:var(--ink);font-family:Inter,"Noto Sans SC",system-ui,sans-serif}
+  .grain:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:30;opacity:.12;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E")}
+  .nav-link{position:relative;color:#6d746a;transition:color .25s}.nav-link:hover,.nav-link.active{color:var(--ink)}.nav-link.active:after{content:"";position:absolute;left:0;right:0;bottom:-9px;height:1px;background:var(--clay)}
+  .eyebrow{letter-spacing:.22em;text-transform:uppercase;font-size:10px;color:var(--clay);font-weight:700}
+  .section-title{font-family:Georgia,"Noto Serif SC",serif;letter-spacing:-.035em}
+  .hero-photo{background-image:linear-gradient(90deg,rgba(19,35,33,.62),rgba(19,35,33,.08)),url('https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=2200&q=88');background-position:center 52%;background-size:cover}
+  .photo-card{position:relative;overflow:hidden;background:#e4ded2}.photo-card img{transition:transform .8s cubic-bezier(.2,.7,.2,1),filter .5s}.photo-card:hover img{transform:scale(1.045);filter:saturate(1.08)}
+  .polaroid{background:#fffdf8;padding:10px 10px 34px;box-shadow:0 10px 30px rgba(50,45,36,.13);transform:rotate(-2deg)}
+  .timeline-line{background:linear-gradient(to bottom,#d3c2a9,#d9ddd5,transparent)}
+  .letter-paper{background:repeating-linear-gradient(to bottom,#fbf8f0 0,#fbf8f0 31px,#e7dfd1 32px);box-shadow:0 16px 45px rgba(53,47,37,.13)}
+  .pill{border:1px solid #d9d2c6;border-radius:999px;padding:8px 14px;font-size:12px;color:#6d746a;transition:.2s}.pill.active,.pill:hover{background:var(--ink);border-color:var(--ink);color:#f8f4eb}
+  .reveal{opacity:0;transform:translateY(24px)}
+  .modal{opacity:0;pointer-events:none;transition:opacity .25s}.modal.open{opacity:1;pointer-events:auto}
+  .envelope-flap{transform-origin:top;transition:transform .8s cubic-bezier(.2,.7,.2,1)}.envelope.open .envelope-flap{transform:rotateX(180deg)}
+  @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}.reveal{opacity:1;transform:none}}
+</style>
+</head>
+<body class="grain">
+<header class="fixed top-0 left-0 right-0 z-20 bg-paper/90 backdrop-blur-xl border-b border-[#ded8cb]/70">
+  <div class="max-w-7xl mx-auto px-5 md:px-10 h-[74px] flex items-center justify-between">
+    <a href="#home" class="flex items-center gap-3" aria-label="回到首页">
+      <span class="w-9 h-9 rounded-full border border-[#c8b99f] flex items-center justify-center text-clay">✳</span>
+      <span><b class="block text-[11px] tracking-[.2em]">KEEPSAKE · 拾光集</b><small class="text-[10px] text-muted tracking-wider">A MEMORY BOOK · VOL. 01</small></span>
+    </a>
+    <nav class="hidden md:flex items-center gap-8 text-xs tracking-wide">
+      <a class="nav-link active" href="#home">首页</a><a class="nav-link" href="#journeys">旅行足迹</a><a class="nav-link" href="#gallery">照片收藏</a><a class="nav-link" href="#timeline">时光轴</a><a class="nav-link" href="#letter">生日信</a>
+    </nav>
+    <button id="menuBtn" class="md:hidden text-xl" aria-label="打开菜单">☰</button>
+    <a href="#letter" class="hidden md:inline-flex text-xs border border-[#c9b99f] px-4 py-2 rounded-full hover:bg-ink hover:text-paper transition">写给你的信 ↗</a>
+  </div>
+  <div id="mobileMenu" class="hidden md:hidden px-6 pb-5 bg-paper"><div class="grid grid-cols-2 gap-4 text-sm"><a href="#home">首页</a><a href="#journeys">旅行足迹</a><a href="#gallery">照片收藏</a><a href="#timeline">时光轴</a><a href="#letter">生日信</a></div></div>
+</header>
+<main id="home">
+  <section class="pt-[74px]">
+    <div class="hero-photo min-h-[650px] md:min-h-[720px] flex items-end relative">
+      <div class="max-w-7xl mx-auto w-full px-6 md:px-12 pb-16 md:pb-24 text-[#f8f4eb]">
+        <div class="max-w-2xl">
+          <p class="eyebrow !text-[#e5c9a4] mb-6 hero-kicker">TO MY FAVORITE PERSON · 2026.11.22</p>
+          <h1 class="section-title text-5xl md:text-7xl leading-[1.12] mb-6 hero-title">和你走过的<br/><i class="font-normal">每一站。</i></h1>
+          <p class="text-sm md:text-base text-white/80 leading-8 max-w-lg hero-copy">有些风景值得收藏，有些瞬间，因为有你才变得特别。<br/>这一次，想邀请你重新走一遍我们的故事。</p>
+          <div class="mt-10 flex flex-wrap items-center gap-5 hero-cta"><a href="#journeys" class="bg-[#f4efe5] text-ink px-6 py-3 rounded-full text-xs tracking-wider hover:bg-white transition">开启我们的故事 <span class="ml-3">↓</span></a><span class="text-[10px] tracking-[.22em] text-white/60">PLACES · MOMENTS · MEMORIES</span></div>
+        </div>
+      </div>
+      <div class="absolute right-8 bottom-10 hidden md:block text-white/70 text-[10px] tracking-[.2em] [writing-mode:vertical-rl]">A JOURNEY THROUGH US</div>
+    </div>
+    <div class="max-w-7xl mx-auto px-6 md:px-12 py-7 flex justify-between items-center text-[10px] tracking-[.18em] text-muted"><span>OUR STORY · 202X — 2026</span><span>SCROLL TO EXPLORE ↓</span></div>
+  </section>
+
+  <section class="max-w-7xl mx-auto px-6 md:px-12 py-20 md:py-28 grid md:grid-cols-12 gap-12 items-center">
+    <div class="md:col-span-5 reveal"><p class="eyebrow mb-5">A NOTE FOR YOU</p><h2 class="section-title text-4xl md:text-5xl leading-tight mb-7">把一起走过的<br/><span class="text-clay italic">日子，收藏起来。</span></h2><p class="text-sm text-[#73776d] leading-8">我把一起看过的风景、走过的路、拍下的照片，都整理在这里。希望你打开它的时候，能重新感受到那些快乐的瞬间。</p><div class="mt-9 flex items-center gap-4"><span class="w-12 h-px bg-clay"></span><span class="text-xs text-muted tracking-widest">WITH LOVE, ALWAYS</span></div></div>
+    <div class="md:col-span-7 relative reveal"><div class="grid grid-cols-5 gap-3 items-center"><div class="col-span-3 photo-card rounded-sm aspect-[4/5]"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=85" alt="海边风景" loading="lazy"></div><div class="col-span-2 space-y-3"><div class="photo-card aspect-[4/5] rounded-sm"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=700&q=85" alt="湖边旅行" loading="lazy"/></div><div class="bg-[#e8e3d8] p-4 md:p-5"><span class="eyebrow">LITTLE MOMENTS</span><p class="section-title text-xl mt-2">平凡日子<br/>也闪闪发光。</p></div></div></div><span class="absolute -bottom-5 left-8 text-[10px] text-muted tracking-[.2em]">FIG. 01 — OUR MEMORY</span></div>
+  </section>
+
+  <section id="journeys" class="bg-[#eae7de] py-24 md:py-28 scroll-mt-20">
+    <div class="max-w-7xl mx-auto px-6 md:px-12">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 reveal"><div><p class="eyebrow mb-4">PLACES WE'VE BEEN</p><h2 class="section-title text-4xl md:text-5xl">我们的旅行足迹</h2></div><p class="text-sm text-[#77786f] leading-7 max-w-sm">每一次出发，都成为了我们故事的一部分。<br/>选一段旅程，再走一遍。</p></div>
+      <div class="grid md:grid-cols-3 gap-5" id="tripCards">
+        <button class="trip-card text-left group reveal" data-trip="海边的两天" data-date="202X.XX" data-desc="风吹过海面，夕阳慢慢落下。那一天的风景，想和你再看很多次。" data-img="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=88"><div class="photo-card aspect-[5/4] mb-5"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1000&q=85" alt="海边的两天" loading="lazy"/><span class="absolute top-4 left-4 bg-paper/90 px-3 py-1.5 text-[10px] tracking-widest">01 / COAST</span></div><div class="flex justify-between items-start"><div><p class="text-[10px] text-clay tracking-widest mb-2">202X · SUMMER</p><h3 class="section-title text-2xl">海边的两天</h3><p class="text-xs text-muted mt-2">一起听海，看日落</p></div><span class="text-xl group-hover:translate-x-1 transition">↗</span></div></button>
+        <button class="trip-card text-left group reveal" data-trip="山间慢行" data-date="202X.XX" data-desc="走过山路，看过云海。一起慢慢走，就是很好的旅行。" data-img="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1400&q=88"><div class="photo-card aspect-[5/4] mb-5"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1000&q=85" alt="山间慢行" loading="lazy"/><span class="absolute top-4 left-4 bg-paper/90 px-3 py-1.5 text-[10px] tracking-widest">02 / HIGHLAND</span></div><div class="flex justify-between items-start"><div><p class="text-[10px] text-clay tracking-widest mb-2">202X · AUTUMN</p><h3 class="section-title text-2xl">山间慢行</h3><p class="text-xs text-muted mt-2">一起去看远方</p></div><span class="text-xl group-hover:translate-x-1 transition">↗</span></div></button>
+        <button class="trip-card text-left group reveal" data-trip="城市漫游" data-date="202X.XX" data-desc="没有特别的计划，只想和你一起逛逛走走。" data-img="https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=1400&q=88"><div class="photo-card aspect-[5/4] mb-5"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=1000&q=85" alt="城市漫游" loading="lazy"/><span class="absolute top-4 left-4 bg-paper/90 px-3 py-1.5 text-[10px] tracking-widest">03 / CITY</span></div><div class="flex justify-between items-start"><div><p class="text-[10px] text-clay tracking-widest mb-2">202X · WINTER</p><h3 class="section-title text-2xl">城市漫游</h3><p class="text-xs text-muted mt-2">没有目的地的散步</p></div><span class="text-xl group-hover:translate-x-1 transition">↗</span></div></button>
+      </div>
+      <div id="tripDetail" class="hidden mt-12 bg-paper p-5 md:p-8 grid md:grid-cols-2 gap-8 items-center shadow-soft"><img id="tripDetailImg" class="w-full aspect-[16/10] object-cover" alt="旅行详情"/><div><p class="eyebrow mb-3">SELECTED JOURNEY · <span id="tripDetailDate"></span></p><h3 id="tripDetailTitle" class="section-title text-3xl mb-4"></h3><p id="tripDetailDesc" class="text-sm leading-8 text-muted"></p><button id="showTripPhotos" class="mt-7 text-xs border-b border-clay pb-2">查看这次旅行的照片 ↗</button></div></div>
+    </div>
+  </section>
+
+  <section id="gallery" class="max-w-7xl mx-auto px-6 md:px-12 py-24 md:py-28 scroll-mt-20">
+    <div class="text-center mb-12 reveal"><p class="eyebrow mb-4">PHOTOGRAPHS & MEMORIES</p><h2 class="section-title text-4xl md:text-5xl">把瞬间，留在这里。</h2><p class="text-sm text-muted mt-5">每一张照片，都藏着一段故事。</p></div>
+    <div class="flex justify-center flex-wrap gap-2 mb-9" id="filters"><button class="pill active" data-filter="all">全部回忆</button><button class="pill" data-filter="sea">海边</button><button class="pill" data-filter="mountain">山野</button><button class="pill" data-filter="city">城市</button></div>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5" id="galleryGrid">
+      <button class="photo-card aspect-[4/5] reveal gallery-item" data-category="sea" data-caption="海风与阳光 · 那个下午"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=900&q=85" alt="海浪" loading="lazy"/><span class="absolute bottom-0 inset-x-0 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs">海风与阳光 · 01</span></button>
+      <button class="photo-card aspect-[4/5] reveal gallery-item" data-category="mountain" data-caption="山间的清晨 · 云雾还没散开"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=900&q=85" alt="湖泊与群山" loading="lazy"/><span class="absolute bottom-0 inset-x-0 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs">山间的清晨 · 02</span></button>
+      <button class="photo-card aspect-[4/5] reveal gallery-item" data-category="city" data-caption="城市夜晚 · 慢慢走，不着急"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&w=900&q=85" alt="海边小镇" loading="lazy"/><span class="absolute bottom-0 inset-x-0 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs">城市夜晚 · 03</span></button>
+      <button class="photo-card aspect-[4/5] reveal gallery-item" data-category="sea" data-caption="日落之前 · 再多待一会儿"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=85" alt="日落海滩" loading="lazy"/><span class="absolute bottom-0 inset-x-0 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs">日落之前 · 04</span></button>
+      <button class="photo-card aspect-[4/5] reveal gallery-item" data-category="mountain" data-caption="路上的风景 · 一起慢慢走"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=900&q=85" alt="山间风景" loading="lazy"/><span class="absolute bottom-0 inset-x-0 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs">路上的风景 · 05</span></button>
+      <button class="photo-card aspect-[4/5] reveal gallery-item" data-category="city" data-caption="路边的小店 · 旅行里的小确幸"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=900&q=85" alt="城市街景" loading="lazy"/><span class="absolute bottom-0 inset-x-0 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs">路边的小店 · 06</span></button>
+    </div>
+    <p class="text-center text-[10px] text-muted tracking-wider mt-8">点击任意照片，放大查看 · DEMO IMAGES</p>
+  </section>
+
+  <section id="timeline" class="bg-[#eae7de] py-24 md:py-28 scroll-mt-20">
+    <div class="max-w-5xl mx-auto px-6 md:px-12"><div class="text-center mb-16 reveal"><p class="eyebrow mb-4">OUR MEMORY TIMELINE</p><h2 class="section-title text-4xl md:text-5xl">一起走过的日子</h2><p class="text-sm text-muted mt-5">那些看似平凡，却一直记得的瞬间。</p></div>
+      <div class="relative"><div class="timeline-line absolute left-[15px] md:left-1/2 top-0 bottom-0 w-px"></div>
+        <div class="space-y-14">
+          <article class="relative grid md:grid-cols-2 gap-7 md:gap-16 items-center reveal"><span class="absolute left-[9px] md:left-[calc(50%-6px)] top-2 w-3 h-3 rounded-full bg-clay ring-4 ring-[#eae7de]"></span><div class="pl-12 md:pl-0 md:text-right"><p class="eyebrow mb-2">THE FIRST JOURNEY</p><h3 class="section-title text-2xl">第一次一起出发</h3><p class="text-sm text-muted leading-7 mt-3">从期待到真正出发，这一次旅行成为了我们的故事开篇。</p></div><div class="pl-12 md:pl-0"><div class="photo-card aspect-[16/9]"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1000&q=85" alt="公路旅行" loading="lazy"/></div><p class="text-[10px] text-muted mt-3">202X.XX · ON THE ROAD</p></div></article>
+          <article class="relative grid md:grid-cols-2 gap-7 md:gap-16 items-center reveal"><span class="absolute left-[9px] md:left-[calc(50%-6px)] top-2 w-3 h-3 rounded-full bg-clay ring-4 ring-[#eae7de]"></span><div class="pl-12 md:pl-0 md:order-2"><p class="eyebrow mb-2">BY THE SEA</p><h3 class="section-title text-2xl">一起去看海</h3><p class="text-sm text-muted leading-7 mt-3">海风、夕阳，还有一起度过的那个傍晚。希望以后还能看很多次。</p></div><div class="pl-12 md:pl-0 md:order-1"><div class="photo-card aspect-[16/9]"><img class="w-full h-full object-cover" src="https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1000&q=85" alt="海浪" loading="lazy"/></div><p class="text-[10px] text-muted mt-3 md:text-right">202X.XX · THE BLUE HOUR</p></div></article>
+          <article class="relative grid md:grid-cols-2 gap-7 md:gap-16 items-center reveal"><span class="absolute left-[9px] md:left-[calc(50%-6px)] top-2 w-3 h-3 rounded-full bg-clay ring-4 ring-[#eae7de]"></span><div class="pl-12 md:pl-0 md:text-right"><p class="eyebrow mb-2">LITTLE EVERYDAY</p><h3 class="section-title text-2xl">平凡的小日子</h3><p class="text-sm text-muted leading-7 mt-3">没有去很远的地方，但只要和你在一起就很好。</p></div><div class="pl-12 md:pl-0"><div class="polaroid max-w-[330px]"><img class="w-full aspect-[4/3] object-cover" src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=900&q=85" alt="咖啡时光" loading="lazy"/><p class="section-title text-center text-lg text-[#6f6659] mt-3">a slow day with you</p></div></div></article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="letter" class="max-w-7xl mx-auto px-6 md:px-12 py-24 md:py-32 scroll-mt-20">
+    <div class="grid md:grid-cols-2 gap-14 items-center"><div class="reveal"><p class="eyebrow mb-4">A LETTER FOR YOU</p><h2 class="section-title text-4xl md:text-5xl leading-tight mb-6">旅程还没有结束，<br/><span class="text-clay italic">还有一封信给你。</span></h2><p class="text-sm text-muted leading-8 max-w-md">有些话，平时不一定说得出口。今天想把它们认真写下来，作为这份小小礼物的最后一页。</p><div class="mt-8 text-xs text-muted tracking-[.18em]">NOVEMBER 22, 2026 · YOUR SPECIAL DAY</div></div>
+      <div class="reveal"><div class="envelope relative max-w-md mx-auto" id="envelope"><div class="relative bg-[#d9c7ab] h-64 md:h-72 rounded-sm shadow-soft overflow-hidden"><div class="absolute inset-0" style="background:linear-gradient(145deg,#e7d8bf,#c8ae8a)"></div><div class="absolute bottom-0 left-0 right-0 h-0 w-0 border-l-[190px] md:border-l-[230px] border-r-[190px] md:border-r-[230px] border-b-[145px] md:border-b-[165px] border-l-transparent border-r-transparent border-b-[#bfa581]"></div><div class="envelope-flap absolute top-0 left-0 right-0 h-0 border-l-[190px] md:border-l-[230px] border-r-[190px] md:border-r-[230px] border-t-[135px] md:border-t-[150px] border-l-transparent border-r-transparent border-t-[#e9dbc4] z-10" style="filter:drop-shadow(0 3px 2px rgba(70,50,30,.08))"></div><div class="absolute inset-0 flex flex-col items-center justify-center z-[5] pt-5"><span class="text-3xl text-[#8f7050]">✳</span><span class="section-title text-2xl text-[#6e5b44] mt-2">For You</span><span class="text-[9px] tracking-[.25em] text-[#8e775b] mt-2">WITH LOVE</span></div></div><button id="openLetter" class="mt-6 mx-auto block rounded-full bg-ink text-paper px-7 py-3 text-xs tracking-wider hover:bg-moss transition">拆开这封信 ✉</button></div>
+      <div id="letterContent" class="hidden letter-paper max-w-md mx-auto mt-8 p-7 md:p-10"><p class="eyebrow mb-5">DEAR YOU,</p><h3 class="section-title text-2xl mb-5">亲爱的，生日快乐。</h3><div class="space-y-4 text-sm leading-8 text-[#68685f]"><p>很开心，在这么大的世界里，能够遇见你。</p><p>我们一起去过一些地方，看过一些风景，也留下了很多值得反复回忆的瞬间。我把这些照片整理起来，想让你知道，那些看似普通的日子，我都记得。</p><p>谢谢你出现在我的生活里。未来还有很多地方想和你一起去，很多日落想和你一起看，还有很多平凡的日子，想继续和你一起度过。</p></div><p class="section-title text-xl italic text-clay mt-7">以后的每一站，都想有你。</p><div class="border-t border-[#ddd3c2] mt-7 pt-5 text-right"><p class="text-xs text-muted">永远爱你的那个人</p><p class="text-[10px] text-clay mt-2">2026.11.22</p></div></div></div>
+    </div>
+  </section>
+
+  <section class="bg-ink text-paper py-20"><div class="max-w-4xl mx-auto px-6 text-center"><p class="eyebrow !text-[#d6b58e] mb-5">THE NEXT CHAPTER</p><h2 class="section-title text-4xl md:text-5xl leading-tight">故事还没有结束。<br/><i class="font-normal text-[#d6b58e]">下一站，和你一起。</i></h2><p class="text-sm text-white/60 mt-6">还有很多风景没有一起看，还有很多故事等着我们去写。</p><div class="mt-10 inline-flex items-center gap-3 border border-white/20 rounded-full px-5 py-3 text-xs"><span>♡</span><span>TO MORE ADVENTURES TOGETHER</span></div></div></section>
+</main>
+<footer class="py-8 px-6 text-center text-[10px] tracking-[.18em] text-muted"><p>KEEPSAKE · 拾光集 · MADE WITH LOVE</p><p class="mt-2">2026.11.22</p><p class="mt-3 tracking-normal">此 Demo 使用示例图片与文案，正式版替换为你们自己的照片和故事。</p></footer>
+
+<div id="lightbox" class="modal fixed inset-0 z-50 bg-[#101715]/95 flex items-center justify-center p-5" role="dialog" aria-modal="true" aria-label="照片预览"><button id="closeLightbox" class="absolute top-6 right-7 text-white text-3xl" aria-label="关闭">×</button><button id="prevPhoto" class="absolute left-4 md:left-10 text-white/80 text-3xl" aria-label="上一张">‹</button><div class="max-w-5xl w-full text-center"><img id="lightboxImg" class="max-h-[78vh] max-w-full mx-auto object-contain" alt="照片预览"/><p id="lightboxCaption" class="text-white/75 text-xs tracking-wider mt-5"></p></div><button id="nextPhoto" class="absolute right-4 md:right-10 text-white/80 text-3xl" aria-label="下一张">›</button></div>
+
+<script>
+const $ = (s,root=document)=>root.querySelector(s), $$=(s,root=document)=>[...root.querySelectorAll(s)];
+// Mobile navigation
+$('#menuBtn').addEventListener('click',()=>$('#mobileMenu').classList.toggle('hidden'));
+$$('#mobileMenu a').forEach(a=>a.addEventListener('click',()=>$('#mobileMenu').classList.add('hidden')));
+// Trip selection cards
+$$('.trip-card').forEach(card=>card.addEventListener('click',()=>{
+  $('#tripDetail').classList.remove('hidden'); $('#tripDetailTitle').textContent=card.dataset.trip; $('#tripDetailDate').textContent=card.dataset.date; $('#tripDetailDesc').textContent=card.dataset.desc; $('#tripDetailImg').src=card.dataset.img;
+  $('#tripDetail').scrollIntoView({behavior:'smooth',block:'center'});
+}));
+$('#showTripPhotos').addEventListener('click',()=>$('#gallery').scrollIntoView({behavior:'smooth'}));
+// Gallery filters
+$$('#filters button').forEach(btn=>btn.addEventListener('click',()=>{
+  $$('#filters button').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+  $$('.gallery-item').forEach(item=>{item.classList.toggle('hidden',btn.dataset.filter!=='all' && item.dataset.category!==btn.dataset.filter)});
+}));
+// Lightbox
+let photoIndex=0; const photoItems=()=>$$('.gallery-item:not(.hidden)');
+function showPhoto(i){const items=photoItems(); if(!items.length)return; photoIndex=(i+items.length)%items.length; const item=items[photoIndex]; $('#lightboxImg').src=$('img',item).src; $('#lightboxCaption').textContent=item.dataset.caption; $('#lightbox').classList.add('open'); document.body.style.overflow='hidden';}
+function closePhoto(){$('#lightbox').classList.remove('open');document.body.style.overflow='';}
+$$('.gallery-item').forEach(item=>item.addEventListener('click',()=>showPhoto(photoItems().indexOf(item))));
+$('#closeLightbox').addEventListener('click',closePhoto); $('#lightbox').addEventListener('click',e=>{if(e.target.id==='lightbox')closePhoto()});
+$('#prevPhoto').addEventListener('click',()=>showPhoto(photoIndex-1)); $('#nextPhoto').addEventListener('click',()=>showPhoto(photoIndex+1));
+document.addEventListener('keydown',e=>{if(!$('#lightbox').classList.contains('open'))return;if(e.key==='Escape')closePhoto();if(e.key==='ArrowRight')showPhoto(photoIndex+1);if(e.key==='ArrowLeft')showPhoto(photoIndex-1)});
+// Letter reveal
+$('#openLetter').addEventListener('click',()=>{const env=$('#envelope');env.classList.add('open');$('#openLetter').disabled=true;$('#openLetter').textContent='信件已为你打开';setTimeout(()=>{$('#letterContent').classList.remove('hidden');$('#letterContent').scrollIntoView({behavior:'smooth',block:'center'});},500)});
+// Active navigation state
+const navLinks=$$('.nav-link'); const sections=['home','journeys','gallery','timeline','letter'].map(id=>document.getElementById(id));
+if('IntersectionObserver' in window){const obs=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){navLinks.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+entry.target.id));}}),{rootMargin:'-35% 0px -55% 0px'});sections.forEach(s=>obs.observe(s));}
+// GSAP enhancement with graceful fallback
+if(window.gsap && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){gsap.registerPlugin(ScrollTrigger);gsap.from('.hero-kicker',{y:18,opacity:0,duration:.8,delay:.2});gsap.from('.hero-title',{y:35,opacity:0,duration:1,delay:.35,ease:'power3.out'});gsap.from('.hero-copy,.hero-cta',{y:18,opacity:0,duration:.8,delay:.65,stagger:.12});gsap.utils.toArray('.reveal').forEach(el=>gsap.to(el,{y:0,opacity:1,duration:.85,ease:'power2.out',scrollTrigger:{trigger:el,start:'top 88%',once:true}}));}
+else{$$('.reveal').forEach(el=>{el.style.opacity=1;el.style.transform='none'});}
+</script>
+</body>
+</html>

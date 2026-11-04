@@ -1,0 +1,50 @@
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+.comet-archive-staging/
+.*.comet-archive-cas-*
+.*.comet-runtime-migration.json*
+.*.comet-runtime-source-*
+.*.comet-runtime-stage-*
+**/comet/changes/*/runtime
+**/comet/archive/*/runtime
+**/.comet/run-state.json
+**/.comet/pending-action.json
+**/.comet/trajectory.jsonl
+**/.comet/context.md
+**/.comet/artifacts.json
+**/.comet/checkpoint.json
+**/.comet/skill-snapshots
+**/.comet/checks
+**/.comet/coordination.json
+**/.comet/subagent-progress.md
+.comet-state.lock
+.comet-state-transaction.json
+# <<< Comet managed project state <<<
+
+# >>> Project >>>
+# 构建产物
+node_modules/
+dist/
+
+# 运行数据与数据库（SQLite WAL 会产生 -wal/-shm 伴生文件）
+data/*
+!data/.gitkeep
+server/data/
+web/data/
+
+# 密钥与本地环境
+.env
+.env.local
+*.pem
+
+# 本地代码索引
+.codegraph/
+
+# 系统与编辑器
+.DS_Store
+*.log
+.idea/
+.vscode/
+# <<< Project <<<

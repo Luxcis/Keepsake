@@ -1,0 +1,155 @@
+/* 设计令牌：取自 docs/demo.html 已确认方向（计划 §2.1 视觉关键词：复古胶片 / 奶油白纸张 / 暖棕 / 低饱和绿 / 黄铜）。 */
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f5f1e8;      /* 奶油白纸张 */
+  --color-paper-deep: #eae7de; /* 翻旧了的纸（区块底色） */
+  --color-ink: #263c3b;        /* 墨绿主文字 */
+  --color-ink-soft: #73776d;
+  --color-moss: #667c6c;       /* 低饱和绿点缀 */
+  --color-clay: #b58d62;       /* 黄铜/陶土装饰 */
+  --color-muted: #817d72;
+  --color-line: #ded8cb;
+
+  --font-serif: Georgia, "Noto Serif SC", "Songti SC", serif;
+  --font-sans: Inter, "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+
+  --shadow-soft: 0 18px 55px rgba(49, 55, 45, 0.1);
+
+  --animate-fade-in: fade-in 0.7s ease-out both;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+/* ---------- 基础 ---------- */
+html {
+  scroll-behavior: smooth;
+}
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 胶片颗粒质感（demo.html 的 grain 层） */
+.grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  opacity: 0.12;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+}
+
+/* ---------- 常用样式（沿用 demo 命名，正式组件阶段继续复用） ---------- */
+.eyebrow {
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--color-clay);
+  font-weight: 700;
+}
+.section-title {
+  font-family: var(--font-serif);
+  letter-spacing: -0.035em;
+}
+.photo-card {
+  position: relative;
+  overflow: hidden;
+  background: #e4ded2;
+}
+.polaroid {
+  background: #fffdf8;
+  padding: 10px 10px 34px;
+  box-shadow: 0 10px 30px rgba(50, 45, 36, 0.13);
+}
+.letter-paper {
+  background: repeating-linear-gradient(
+    to bottom,
+    #fbf8f0 0,
+    #fbf8f0 31px,
+    #e7dfd1 32px
+  );
+  box-shadow: 0 16px 45px rgba(53, 47, 37, 0.13);
+}
+.pill {
+  border: 1px solid #d9d2c6;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #6d746a;
+  transition: 0.2s;
+}
+.pill.active,
+.pill:hover {
+  background: var(--color-ink);
+  border-color: var(--color-ink);
+  color: #f8f4eb;
+}
+.nav-link {
+  position: relative;
+  color: #6d746a;
+  transition: color 0.25s;
+}
+.nav-link:hover,
+.nav-link.router-link-active {
+  color: var(--color-ink);
+}
+.nav-link.router-link-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -9px;
+  height: 1px;
+  background: var(--color-clay);
+}
+
+/* ---------- 动效编排 ---------- */
+/* motion-ready 策略（计划 §2.1）：只有确认 GSAP 可用且未开启减少动效后，
+   由 compositions/motion.ts 给根节点加 .motion-ready —— 此时才隐藏待入场元素
+   交给 GSAP 接管；无 JS / 加载失败 / reduced-motion 一律保持可见。 */
+.motion-ready .reveal {
+  opacity: 0;
+  transform: translateY(22px);
+}
+
+/* 灯箱过渡（CSS-only，不依赖 JS 动画库） */
+.lb-enter-active,
+.lb-leave-active {
+  transition: opacity 0.22s ease;
+}
+.lb-enter-from,
+.lb-leave-to {
+  opacity: 0;
+}
+.lb-enter-active img,
+.lb-leave-active img {
+  transition: transform 0.22s ease;
+}
+.lb-enter-from img,
+.lb-leave-to img {
+  transform: scale(0.96);
+}
+
+/* 计划 §2.1：减少动态效果时动效退化为直接呈现 */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .motion-ready .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}

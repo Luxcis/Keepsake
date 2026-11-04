@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "PreToolUse": [
+        {
+          "matcher": "Write|Edit",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "node",
+              "args": [
+                "/Users/luxcis/data/workspace/A-project/projectJ/.zcode/skills/comet/scripts/comet-hook-router.mjs",
+                "--platform",
+                "zcode",
+                "--project-root",
+                "/Users/luxcis/data/workspace/A-project/projectJ"
+              ],
+              "timeoutMs": 60000
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
