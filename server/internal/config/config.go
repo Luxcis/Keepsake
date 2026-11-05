@@ -24,6 +24,14 @@ type Config struct {
 	// CookieSecure: 会话 Cookie 的 Secure 位。默认不启用；生产 HTTPS 网关下显式开启。
 	// 本地 HTTP 联调（如 compose 无 TLS）保持 false。
 	CookieSecure bool
+	// 管理员自动引导：ADMIN_USERNAME/ADMIN_PASSWORD 同时配置时，
+	// 常驻启动会自动创建首个管理员（同名已存在则跳过，不重置密码）；
+	// 重置密码或追加账号仍走 -create-admin CLI。三者留空即完全关闭自动引导。
+	AdminUsername string
+	AdminPassword string
+	// AdminSitePassword: 可选；仅在本进程成功创建管理员时顺带写入站点访问门禁，
+	// 不会覆盖已存在的门禁口令。
+	AdminSitePassword string
 	// COS：腾讯 COS 私有桶访问参数（计划 §3.1：密钥仅保存在服务端）。
 	// ID/Key/Region/Bucket 四项均配置才视作启用。
 	COSSecretID  string
@@ -50,6 +58,10 @@ func Load() Config {
 		COSBucket:     getEnv("COS_BUCKET", ""),
 		COSURLExpires: getURLExpires("COS_URL_EXPIRES", 900),
 		CORSOrigins:   splitAndTrim(getEnv("CORS_ORIGINS", "http://localhost:5173")),
+		// 引导类变量无默认值，空即未启用（与密钥类同风格）。
+		AdminUsername:     os.Getenv("ADMIN_USERNAME"),
+		AdminPassword:     os.Getenv("ADMIN_PASSWORD"),
+		AdminSitePassword: os.Getenv("ADMIN_SITE_PASSWORD"),
 	}
 }
 

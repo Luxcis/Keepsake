@@ -13,9 +13,6 @@ services:
       - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - api
-    networks:
-      - edge
-      - backend
     restart: unless-stopped
 
   api:
@@ -27,6 +24,11 @@ services:
       DB_FILE: ${DB_FILE:-journey.db}
       REDIS_ADDR: redis:6379
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # 管理员自动引导：.env 配置 ADMIN_USERNAME/ADMIN_PASSWORD 后，api 启动即首次引导；
+      # 同名已存在则跳过（不重置密码）。全部留空则不进入容器，也不做引导。
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_SITE_PASSWORD: ${ADMIN_SITE_PASSWORD:-}
       COS_SECRET_ID: ${COS_SECRET_ID:-}
       COS_SECRET_KEY: ${COS_SECRET_KEY:-}
       COS_REGION: ${COS_REGION:-}
@@ -37,8 +39,6 @@ services:
       - ./data:/data
     depends_on:
       - redis
-    networks:
-      - backend
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
@@ -51,14 +51,5 @@ services:
     image: redis:8-alpine
     command: ["redis-server", "--appendonly", "yes"]  # AOF 开启，重启不丢会话/缓存（验收 §6.1）
     volumes:
-      - redis-data:/data
-    networks:
-      - backend
+      - ./data:/data
     restart: unless-stopped
-
-networks:
-  edge: {}
-  backend: {}
-
-volumes:
-  redis-data:

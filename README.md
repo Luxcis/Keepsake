@@ -49,10 +49,10 @@
 
 ```bash
 # 1. 后端（数据库自动建表在 ./data/journey.db）
-make dev-api          # 或: cd server && DATA_DIR=$PWD/data go run ./cmd/server
+cd server && DATA_DIR=$PWD/data go run ./cmd/server
 
 # 2. 前端（另一终端）
-make dev-web          # http://localhost:5173，/api 自动代理到 :8080
+cd web && npm run dev # http://localhost:5173，/api 自动代理到 :8080
 ```
 
 接口自检：`curl http://localhost:8080/healthz`
@@ -61,8 +61,10 @@ make dev-web          # http://localhost:5173，/api 自动代理到 :8080
 
 ```bash
 # 创建管理员（Argon2id 哈希入库）
-make create-admin ADMIN_USERNAME=admin ADMIN_PASSWORD='你的管理密码' \
-                 ADMIN_SITE_PASSWORD='给TA的访问口令'   # 可选：同时启门禁
+cd server && DATA_DIR=$PWD/data \
+  ADMIN_USERNAME=admin ADMIN_PASSWORD='你的管理密码' \
+  ADMIN_SITE_PASSWORD='给TA的访问口令' \
+  go run ./cmd/server -create-admin
 
 # 或在容器运行中引导：
 docker compose exec -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='***' -e ADMIN_SITE_PASSWORD='***' \
@@ -72,14 +74,23 @@ docker compose exec -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='***' -e ADMIN_SIT
 - `ADMIN_SITE_PASSWORD` 未设置时，门禁处于“开放模式”，`/api/site/settings` 中 `gate_enabled: false`，日志有明确告警；随时可通过 `PUT /api/admin/site/settings {"site_password":"..."}` 启用。
 - 管理员会话 24h，门禁会话 30 天，均为 HttpOnly + SameSite=Lax Cookie；错误请求体大小受限，登录失败 5 次/15 分钟即限速（Redis 固定窗口）。
 
+### Docker 自动引导
+
+在 `.env` 填好 `ADMIN_USERNAME`/`ADMIN_PASSWORD`（可选 `ADMIN_SITE_PASSWORD`）后，`docker compose up -d` 时 api 启动会自动创建首个管理员，无需手动执行引导命令：
+
+- 仅当该用户名**不存在**时创建；同名已存在则跳过日志提示，**不重置密码**（重启容器不会覆盖现有账号）。
+- 变量只填其一会在日志告警并跳过；全部留空则行为与之前完全一致。
+- 自动引导与 CLI 使用同一套校验（用户名 2..64、密码 ≥8），引导失败只记日志不阻断启动，修正 `.env` 后重启即可重试。
+- 安全提示：配置后会以明文进入容器环境变量（`docker inspect` 可见）；介意可把 `.env` 中 `ADMIN_PASSWORD` 留空，首次建号改用上面 CLI 方式。
+
 ## Docker 本地跑通
 
 ```bash
 cp .env.example .env   # 按需修改（本地 http 联调保持 COOKIE_SECURE=false）
-make up                # 构建并启动 web/api/redis
+docker compose up --build -d   # 构建并启动 web/api/redis
 #   打开 http://localhost:8088 （Nginx → SPA + /api 反代）
 curl http://localhost:8088/api/site/settings
-make down
+docker compose down
 ```
 
 > Linux 服务器上如遇 SQLite 写入权限问题：`sudo chown -R 10001 ./data`（容器内以 uid 10001 运行）。

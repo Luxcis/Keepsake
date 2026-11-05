@@ -3,6 +3,9 @@
 //
 //	读取 ADMIN_USERNAME / ADMIN_PASSWORD（必需）、ADMIN_SITE_PASSWORD（可选）创建管理员，
 //	并可选地把站点访问口令（Argon2id 哈希）写入 site_settings 打开门禁。
+//
+// 常驻启动自动引导：两者同时配置且用户不存在时，run() 内 bootstrapAdmin 会执行同样的引导（幂等，
+// 可选 ADMIN_SITE_PASSWORD 一并生效），便于 `docker compose up` 直接用 .env 完成首次建号。
 package main
 
 import (
@@ -90,6 +93,52 @@ func runCreateAdmin() error {
 	return nil
 }
 
+// ---------- 常驻启动自动引导 ----------
+
+// bootstrapAdmin：常驻启动时的管理员引导，等价于一次性 -create-admin（幂等）。
+// 仅当 ADMIN_USERNAME/ADMIN_PASSWORD 同时配置且该用户名不存在时才创建；
+// 已存在（不重置密码）、校验失败、写入失败等情况只记日志，不阻断服务启动。
+// 配置了 ADMIN_SITE_PASSWORD 且本次创建成功时，顺带写入站点门禁（不覆盖已设口令）。
+func bootstrapAdmin(ctx context.Context, cfg config.Config, st *store.Store, svc *auth.Service, log *slog.Logger) {
+	switch {
+	case cfg.AdminUsername == "" && cfg.AdminPassword == "":
+		return
+	case cfg.AdminUsername == "" || cfg.AdminPassword == "":
+		log.Warn("admin auto-bootstrap skipped: ADMIN_USERNAME and ADMIN_PASSWORD must be set together")
+		return
+	}
+
+	_, err := st.AdminPasswordHash(ctx, cfg.AdminUsername)
+	switch {
+	case err == nil:
+		log.Info("admin already exists, auto-bootstrap skipped", "username", cfg.AdminUsername)
+		return
+	case !errors.Is(err, store.ErrNoUser):
+		log.Error("admin auto-bootstrap lookup failed", "err", err)
+		return
+	}
+
+	if err := svc.CreateAdminUser(ctx, cfg.AdminUsername, cfg.AdminPassword); err != nil {
+		log.Error("admin auto-bootstrap failed", "err", err)
+		return
+	}
+	log.Info("admin auto-bootstrap created", "username", cfg.AdminUsername)
+
+	if cfg.AdminSitePassword == "" {
+		return
+	}
+	hash, err := auth.HashPassword(cfg.AdminSitePassword)
+	if err != nil {
+		log.Error("auto-bootstrap hash site password failed", "err", err)
+		return
+	}
+	if err := st.SetSettings(ctx, map[string]string{"site_password": hash}); err != nil {
+		log.Error("auto-bootstrap store site password failed", "err", err)
+		return
+	}
+	log.Info("site access password enabled")
+}
+
 // ---------- 常驻服务 ----------
 
 func run() error {
@@ -144,6 +193,9 @@ func run() error {
 	}
 	limiter := auth.NewLimiter(rdb)
 	svc := auth.NewService(st, sessions, limiter, log, cfg.CookieSecure)
+
+	// --- 管理员自动引导：.env/compose 配置 ADMIN_* 即随启动创建首个管理员（幂等，见 bootstrapAdmin） ---
+	bootstrapAdmin(ctx, cfg, st, svc, log)
 
 	// --- COS（可选依赖；未配置 → NoopBackend，上传接口返回明确的 config_missing） ---
 	var cosBackend cosutil.Backend
