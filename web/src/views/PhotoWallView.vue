@@ -73,12 +73,19 @@ function pickTrip(id: string) {
   void load()
 }
 
-const viewable = computed(() =>
-  photos.value
-    .map((p) => ({ item: p, src: p.src ?? '' }))
-    .filter((x) => x.src !== '')
-    .map<LightboxPhoto>((x) => ({ src: x.src, caption: x.item.title ?? undefined })),
+// 可放大查看的照片：优先用显示尺寸签名（原图可达 30MB，灯箱直连会让切换长时间停在上一张）。
+// 过滤掉无原图的条目后下标会与网格错位，所以点击时按 id 反查灯箱下标。
+const viewable = computed<LightboxPhoto[]>(() =>
+  photos.value.flatMap((p) => {
+    const display = p.preview_src || p.src
+    return display ? [{ id: p.id, src: display, caption: p.title ?? undefined }] : []
+  }),
 )
+
+function openPhoto(p: PhotoItem) {
+  const i = viewable.value.findIndex((x) => x.id === p.id)
+  if (i >= 0) lightboxIndex.value = i
+}
 
 onMounted(load)
 onBeforeUnmount(() => ctx?.revert())
@@ -127,11 +134,11 @@ onBeforeUnmount(() => ctx?.revert())
 
           <div v-else ref="gridRoot" class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
             <button
-              v-for="(p, i) in photos"
+              v-for="p in photos"
               :key="p.id"
               class="photo-card aspect-[4/5] rounded-sm group reveal"
               :disabled="!p.src"
-              @click="p.src && (lightboxIndex = i)"
+              @click="p.src && openPhoto(p)"
             >
               <img
                 v-if="p.thumb_src"

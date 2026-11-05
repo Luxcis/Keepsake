@@ -33,6 +33,8 @@ func (NoopBackend) SignGET(string) (string, error) { return "", ErrNotConfigured
 
 func (NoopBackend) SignGETThumb(string) (string, error) { return "", ErrNotConfigured }
 
+func (NoopBackend) SignGETPreview(string) (string, error) { return "", ErrNotConfigured }
+
 func (NoopBackend) Head(string) (int64, string, error) { return 0, "", ErrNotConfigured }
 
 func (NoopBackend) Delete(string) error { return ErrNotConfigured }
@@ -47,6 +49,9 @@ type Backend interface {
 	// SignGETThumb 生成签入 COS 缩放处理参数的缩略图 URL。
 	// 处理参数必须参与签名：私有读桶下签名后拼参数会被校验拒绝（403）。
 	SignGETThumb(key string) (string, error)
+	// SignGETPreview 生成签入显示尺寸缩放参数的 URL（灯箱用，小于原图）。
+	// 与 SignGETThumb 同一签名约束：处理参数必须参与签名。
+	SignGETPreview(key string) (string, error)
 	// Head 返回对象大小与 Content-Type；对象不存在返回 ErrObjectMissing。
 	Head(key string) (size int64, contentType string, err error)
 	// Delete 删除对象；对象不存在视为成功（幂等）。
@@ -85,11 +90,25 @@ func (c *Client) SignGET(key string) (string, error) {
 // thumbOp：数据万象缩放指令（宽度 1400 等比缩放），整体作为参数 key、值为空参与签名。
 const thumbOp = "imageMogr2/thumbnail/1400x"
 
+// previewOp：灯箱显示尺寸（最长边 2400、等比缩小、原图更小则不放大）。
+// 原图可达 30MB，直接下发会让灯箱切换长时间停在上一张；缩放到屏幕够用的尺寸后
+// 每张通常只有几百 KB。`>` 后缀是 COS 的“仅缩小”语义。
+const previewOp = "imageMogr2/thumbnail/2400x2400>"
+
 // SignGETThumb 生成签入缩放处理参数的短时效缩略图 URL。
 // 私有读桶下处理参数必须在签名时携带；签名后再拼到 URL 上会被 COS 校验
 // 判为参数与签名不符（403 SignatureDoesNotMatch），不能在客户端追加。
 func (c *Client) SignGETThumb(key string) (string, error) {
-	q := url.Values{thumbOp: {""}}
+	return c.signProcessed(key, thumbOp)
+}
+
+// SignGETPreview 生成签入显示尺寸缩放参数的短时效 URL（灯箱用）。
+func (c *Client) SignGETPreview(key string) (string, error) {
+	return c.signProcessed(key, previewOp)
+}
+
+func (c *Client) signProcessed(key, op string) (string, error) {
+	q := url.Values{op: {""}}
 	signed, _, err := c.presign(http.MethodGet, key, "", &q)
 	return signed, err
 }

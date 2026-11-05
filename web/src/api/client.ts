@@ -115,11 +115,14 @@ export interface PhotoItem {
   height?: number | null
   sort_order: number
   src?: string
+  // 灯箱显示尺寸（长边 2400、不放大）；签名失败时为空，前端回退 src。
+  preview_src?: string
   thumb_src?: string
 }
 
 // 灯箱条目（与 PhotoLightbox 组件共享）。
 export interface LightboxPhoto {
+  id?: string
   src: string
   caption?: string
 }

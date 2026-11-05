@@ -223,13 +223,17 @@ func (h *Handlers) servePhotos(w http.ResponseWriter, r *http.Request, tripID st
 				src = ""
 			}
 			thumbSrc := ""
+			previewSrc := ""
 			if src != "" {
 				thumbSrc = h.signThumb(p.COSKey, p.ThumbnailKey)
+				previewSrc = h.signPreview(p.COSKey)
 			}
 			row["src"] = src
+			row["preview_src"] = previewSrc
 			row["thumb_src"] = thumbSrc
 		} else {
 			row["src"] = ""
+			row["preview_src"] = ""
 			row["thumb_src"] = ""
 		}
 		out = append(out, row)
@@ -254,6 +258,20 @@ func (h *Handlers) signThumb(cosKey string, thumbKey sql.NullString) string {
 	u, terr := h.cos.SignGETThumb(cosKey)
 	if terr != nil {
 		slog.Warn("photo sign thumb failed", "key", cosKey, "err", terr)
+		return ""
+	}
+	return u
+}
+
+// signPreview 签名灯箱显示尺寸 URL；失败时返回空串并记 warn。
+// 前端在为空时回退到原图 src，保证功能不因缩放签名失败而中断。
+func (h *Handlers) signPreview(cosKey string) string {
+	if !h.cos.Enabled() {
+		return ""
+	}
+	u, err := h.cos.SignGETPreview(cosKey)
+	if err != nil {
+		slog.Warn("photo sign preview failed", "key", cosKey, "err", err)
 		return ""
 	}
 	return u

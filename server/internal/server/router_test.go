@@ -347,6 +347,49 @@ func TestTripCoverFlow(t *testing.T) {
 	}
 }
 
+// 照片列表必须同时下发 src / preview_src / thumb_src 三个签名位：
+// 灯箱用 preview_src（原图可能 30MB），缩略图用 thumb_src，原图保留给下载/兜底。
+// Noop COS 下三者均为空串（前端据此降级），但字段必须存在。
+func TestTripPhotosExposeSignedFields(t *testing.T) {
+	d := newStack(t)
+
+	r := d.do(t, "POST", "/api/auth/login", `{"username":"admin","password":"secret123"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.do(t, "POST", "/api/admin/trips",
+		`{"title":"海边","start_date":"2026-08-01","status":"published"}`)
+	r.expectStatus(t, http.StatusCreated)
+
+	r = d.do(t, "GET", "/api/trips", "")
+	r.expectStatus(t, http.StatusOK)
+	trips, _ := r.decode(t)["data"].([]any)
+	if len(trips) != 1 {
+		t.Fatalf("trips = %s", r.body)
+	}
+	tripID, _ := trips[0].(map[string]any)["id"].(string)
+
+	if _, err := d.st.CreatePhoto(context.Background(), store.PhotoInput{
+		TripID: tripID, COSKey: "trips/" + tripID + "/202608/a.jpg", Title: "海"}); err != nil {
+		t.Fatalf("create photo: %v", err)
+	}
+
+	r = d.do(t, "GET", "/api/trips/"+tripID+"/photos", "")
+	r.expectStatus(t, http.StatusOK)
+	data, _ := r.decode(t)["data"].(map[string]any)
+	photos, _ := data["photos"].([]any)
+	if len(photos) != 1 {
+		t.Fatalf("photos = %s", r.body)
+	}
+	photo, _ := photos[0].(map[string]any)
+	for _, key := range []string{"src", "preview_src", "thumb_src"} {
+		if _, ok := photo[key]; !ok {
+			t.Fatalf("photo missing %q: %s", key, r.body)
+		}
+		if v, _ := photo[key].(string); v != "" {
+			t.Fatalf("noop COS must keep %s empty, got %q", key, v)
+		}
+	}
+}
+
 func TestCSRFOriginRejected(t *testing.T) {
 	d := newStack(t)
 
