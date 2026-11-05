@@ -5,7 +5,7 @@ import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
 import { bindMotion } from '@/compositions/motion'
 
-// 时光轴：由已发布旅行自动生成，节点按出发日期从早到晚推进。
+// 时光轴：由已发布旅行自动生成，节点按出发日期从近到远推进。
 // 滚动叙事 —— 中轴线随滚动生长，交替节拍滑入（门禁降级优先；reduced-motion/加载失败 → 静态呈现）。
 const trips = ref<Trip[]>([])
 const loading = ref(true)
@@ -19,10 +19,10 @@ async function load() {
   error.value = null
   try {
     const list = await api.get<Trip[]>('/api/trips')
-    // 公开列表按出发日期倒序；时光轴改为从早到晚，同日沿用后台维护顺序。
+    // 时光轴倒序：最近的旅行在前；同日沿用后台维护的 sort_order 顺序。
     trips.value = [...list].sort(
       (a, b) =>
-        a.start_date.localeCompare(b.start_date) ||
+        b.start_date.localeCompare(a.start_date) ||
         a.sort_order - b.sort_order ||
         a.id.localeCompare(b.id),
     )
