@@ -4,10 +4,15 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// MaxUploadBytes 是单张照片上传上限（30MB，与前端/后端校验一致）。
+// 签名接口、本地存储写入与 COS 确认阶段共用同一上限。
+const MaxUploadBytes int64 = 30 << 20
 
 type Config struct {
 	// Env: dev / production。production 下日志为纯 JSON，便于容器采集。
@@ -43,15 +48,26 @@ type Config struct {
 	COSBucket    string
 	// COSURLExpires: 预签名 URL 有效期秒数（计划 §5.1：短时效）。
 	COSURLExpires time.Duration
+	// StorageDriver: 存储后端选择：local / cos；留空自动选择
+	// （COS 四项齐全优先用 COS，否则开发环境用本地磁盘，生产环境禁用上传）。
+	StorageDriver string
+	// StorageDir: 本地存储根目录（默认 {DataDir}/uploads）。
+	StorageDir string
+	// StorageSecret: 本地存储签名 URL 的 HMAC 密钥；留空时自动生成并持久化到
+	// {StorageDir}/.secret，重启后已签发的未过期 URL 仍有效。
+	StorageSecret string
+	// StorageURLExpires: 本地存储签名 URL 有效期（与 COS 预签名同语义）。
+	StorageURLExpires time.Duration
 	// CORSOrigins: 开发期允许的跨域来源，逗号分隔；生产由 Nginx 同源提供，可留空。
 	CORSOrigins []string
 }
 
 func Load() Config {
+	dataDir := getEnv("DATA_DIR", "./data")
 	return Config{
 		Env:           getEnv("APP_ENV", "dev"),
 		Port:          getEnv("API_PORT", "8080"),
-		DataDir:       getEnv("DATA_DIR", "./data"),
+		DataDir:       dataDir,
 		DBFile:        getEnv("DB_FILE", "journey.db"),
 		RedisAddr:     getEnv("REDIS_ADDR", ""),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
@@ -61,7 +77,12 @@ func Load() Config {
 		COSRegion:     getEnv("COS_REGION", ""),
 		COSBucket:     getEnv("COS_BUCKET", ""),
 		COSURLExpires: getURLExpires("COS_URL_EXPIRES", 900),
-		CORSOrigins:   splitAndTrim(getEnv("CORS_ORIGINS", "http://localhost:5173")),
+		// 存储后端：显式 local/cos；留空由启动逻辑按环境与 COS 配置选择。
+		StorageDriver:     strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_DRIVER"))),
+		StorageDir:        getEnv("STORAGE_DIR", filepath.Join(dataDir, "uploads")),
+		StorageSecret:     os.Getenv("STORAGE_SECRET"),
+		StorageURLExpires: getURLExpires("STORAGE_URL_EXPIRES", 900),
+		CORSOrigins:       splitAndTrim(getEnv("CORS_ORIGINS", "http://localhost:5173")),
 		// 引导类变量无默认值，空即未启用（与密钥类同风格）。
 		AdminUsername:     os.Getenv("ADMIN_USERNAME"),
 		AdminPassword:     os.Getenv("ADMIN_PASSWORD"),
@@ -96,6 +117,11 @@ func (c Config) DBPath() string {
 }
 
 func (c Config) IsProd() bool { return c.Env == "production" }
+
+// COSConfigured 判断 COS 四项是否齐全（密钥、区域、桶名任意缺失即视为未配置）。
+func (c Config) COSConfigured() bool {
+	return c.COSSecretID != "" && c.COSSecretKey != "" && c.COSRegion != "" && c.COSBucket != ""
+}
 
 func getEnv(key, def string) string {
 	if v := os.Getenv(key); v != "" {

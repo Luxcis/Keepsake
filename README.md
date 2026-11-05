@@ -12,7 +12,7 @@
 | 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS 4 + GSAP |
 | 后端 | Go 1.26 + chi（路由）+ `modernc.org/sqlite`（纯 Go 驱动）|
 | 缓存/会话 | Redis 8（go-redis/v9），可缺失运行（降级模式）|
-| 对象存储 | 腾讯 COS（COS 链路阶段接入，Bucket 私有 + 短时效签名 URL） |
+| 文件存储 | 本地磁盘（开发默认）或腾讯 COS（Bucket 私有 + 短时效签名 URL），`STORAGE_DRIVER` 切换 |
 | 部署 | Docker Compose：单镜像 app（Nginx + Go API 同容器, dist + 反代 127.0.0.1:8080）+ 可选 redis（profiles） |
 
 ## 目录结构
@@ -26,6 +26,7 @@
 │  ├─ internal/store/        SQLite 连接 + 迁移器 + 显式 SQL 查询
 │  │  └─ migrations/0001_init.sql   核心八表 + 索引 + 站点设置种子
 │  ├─ internal/handlers/     JSON 接口（统一 envelope / 501 占位策略）
+│  ├─ internal/localstore/   本地文件存储（开发默认；签名直传/读取）
 │  ├─ internal/cachex/       Redis 封装（探活语义）
 │  └─ internal/server/       chi 路由与中间件（slog 日志 / CORS / Recoverer）
 ├─ Dockerfile        统一镜像（三阶段：Vue dist + Go server + Nginx 运行时）
@@ -59,6 +60,8 @@ cd web && npm run dev # http://localhost:5173，/api 自动代理到 :8080
 ```
 
 接口自检：`curl http://localhost:8080/healthz`
+
+照片存储：开发环境未配置 COS 时自动使用**本地磁盘**（`server/data/uploads`，即 `DATA_DIR/uploads`），无需任何云服务即可完成上传/浏览/删除。可用 `STORAGE_DRIVER=local|cos` 显式指定；COS 四项配置齐全时自动优先使用 COS。
 
 ## 引导：管理员与站点访问门禁
 
@@ -129,23 +132,32 @@ docker compose down
 - **可选降级**：未配置 Redis 时使用进程内存会话与限速（本站为单实例部署的合法形态；容器重启后需重新登录，且限速计数清零。多实例部署才必须启用 Redis）。
 - **CSRF**：SameSite=Lax Cookie + “不安全方法携带 Origin/Referer 时必须同源（感知 X-Forwarded-Proto）”双层防护。
 
-## 照片上传链路（COS，11/13–15 阶段）
+## 照片上传链路（本地存储 / COS）
 
 ```text
 选择文件 → POST /api/admin/uploads/sign（校验类型/大小，服务端生成 Key）
-        → 浏览器 XHR 直传 COS（PUT，进度条） → POST /api/admin/photos/confirm
+        → 浏览器 XHR 直传（PUT，进度条）→ POST /api/admin/photos/confirm
         （服务端 HEAD 校验真实存在/大小/类型后才入库）
 删除：先删数据库关联 → cos_delete_tasks 表入队 → 后台 janitor 60s 轮询补偿删对象（404 幂等）
-展示：GET /api/trips/{id}/photos 输出短时效签名 URL；缩略图 URL 签入 imageMogr2 处理参数（私有桶下签名后追加参数会被 COS 拒绝 403）
+展示：GET /api/trips/{id}/photos 输出短时效签名 URL
 ```
 
-启用前必须在腾讯云 COS 控制台完成（计划 §6.2 风险项）：
+存储后端由 `STORAGE_DRIVER` 切换，前端链路完全一致：
+
+- **local（开发默认）**：签名 URL 指向本服务 `/api/storage/upload/*`（PUT）与 `/api/storage/files/*`（GET），
+  文件落在 `{DATA_DIR}/uploads`；URL 带 HMAC 能力签名与有效期，不依赖 Cookie。
+  本地模式缩略图/灯箱直接读取原图（浏览器按显示尺寸缩放，同一 URL 可复用缓存）。
+- **cos**：直传腾讯 COS 私有桶，缩略图 URL 签入 imageMogr2 处理参数（私有桶下签名后追加参数会被 COS 拒绝 403）。
+
+选择规则：显式 `STORAGE_DRIVER=local|cos|none` 优先；留空时 COS 四项齐全用 COS，否则开发环境用本地磁盘、生产环境禁用上传（`503 cos_not_configured`）。单机生产可直接 `STORAGE_DRIVER=local`（`./data:/data` 已挂载持久化，也可用 `STORAGE_SECRET` 固定签名密钥）。
+
+启用 COS 前必须在腾讯云 COS 控制台完成（计划 §6.2 风险项）：
 
 1. Bucket 权限设为**私有**（只允许本服务密钥与预签名访问）。
 2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`，最大 30MB。
 3. 建议开启 COS 版本控制/生命周期策略（照片不可再生，备份 §5.3）。
 
-之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用；未配置时上传接口返回语义化的 `503 cos_not_configured`。
+之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用。只想用本地磁盘时无需 COS：开发环境自动启用，容器部署在 `.env` 设置 `STORAGE_DRIVER=local`（文件写入 `./data/uploads`）；两者都未配置时上传接口返回语义化的 `503 cos_not_configured`。
 
 ## 阶段路线（→ 计划 §6 排期）
 

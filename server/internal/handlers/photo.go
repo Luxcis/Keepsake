@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"keepsake/internal/config"
 	"keepsake/internal/cosutil"
 	"keepsake/internal/store"
 )
@@ -26,15 +27,15 @@ var allowedImageTypes = map[string]string{
 	"image/heif": "heif",
 }
 
-const maxUploadBytes = 30 << 20 // 30MB：与 plan 上传链路对齐（直传不经 Nginx）
+const maxUploadBytes = config.MaxUploadBytes // 30MB：签名接口、确认阶段与本地存储写入共用
 
-// cosErrToHTTP：COS 层错误 → 统一 HTTP 语义。
-// cos_not_configured 单独成码：管理员需要一眼看出“是环境没配密钥”，而非服务故障。
+// cosErrToHTTP：存储层错误 → 统一 HTTP 语义（本地存储与 COS 共用）。
+// cos_not_configured 单独成码：管理员需要一眼看出“是环境没配存储”，而非服务故障。
 func cosErrToHTTP(w http.ResponseWriter, cerr error) {
 	switch {
 	case errors.Is(cerr, cosutil.ErrNotConfigured):
 		err(w, http.StatusServiceUnavailable, "cos_not_configured",
-			"对象存储尚未配置：请在环境变量设置 COS_SECRET_ID/KEY/REGION/BUCKET")
+			"文件存储尚未配置：请设置 STORAGE_DRIVER=local 或 COS_SECRET_ID/KEY/REGION/BUCKET")
 	case errors.Is(cerr, cosutil.ErrObjectMissing):
 		err(w, http.StatusBadRequest, "object_missing", "对象不存在：请重新上传")
 	default:
@@ -65,7 +66,7 @@ func (h *Handlers) signUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Size <= 0 || in.Size > maxUploadBytes {
 		err(w, http.StatusBadRequest, "bad_request",
-			"文件大小需在 1 字节到 "+strconv.Itoa(maxUploadBytes>>20)+"MB 之间")
+			"文件大小需在 1 字节到 "+strconv.FormatInt(maxUploadBytes>>20, 10)+"MB 之间")
 		return
 	}
 
@@ -182,7 +183,7 @@ func validTakenAt(s string) bool {
 }
 
 // GET /api/trips/{id}/photos —— 门禁后：真实元数据 + 短时效签名 URL。
-// enabled=false（COS 未配置）时返回空 URL 让前端给出提示（不影响旅行页面其它信息）。
+// enabled=false（存储后端未配置）时返回空 URL 让前端给出提示（不影响旅行页面其它信息）。
 // 仅已发布旅行（公开门禁语义）；管理端走 adminListTripPhotos。
 func (h *Handlers) listTripPhotos(w http.ResponseWriter, r *http.Request) {
 	if _, _, terr := h.st.GetTrip(r.Context(), chi.URLParam(r, "id")); terr != nil {

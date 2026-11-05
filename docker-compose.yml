@@ -26,6 +26,11 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_SITE_PASSWORD: ${ADMIN_SITE_PASSWORD:-}
+      # 文件存储：留空自动（开发=local，生产=COS 或禁用）；显式 local 写入 /data/uploads
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-}
+      STORAGE_DIR: ${STORAGE_DIR:-/data/uploads}
+      STORAGE_SECRET: ${STORAGE_SECRET:-}
+      STORAGE_URL_EXPIRES: ${STORAGE_URL_EXPIRES:-900}
       COS_SECRET_ID: ${COS_SECRET_ID:-}
       COS_SECRET_KEY: ${COS_SECRET_KEY:-}
       COS_REGION: ${COS_REGION:-}
