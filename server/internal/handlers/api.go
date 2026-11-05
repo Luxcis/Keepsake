@@ -42,7 +42,6 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/trips", h.listTrips)
 		r.Get("/trips/{id}", h.getTrip)
 		r.Get("/trips/{id}/photos", h.listTripPhotos)
-		r.Get("/timeline", h.listTimeline)
 		r.Get("/letter", h.getLetter)
 	})
 
@@ -60,10 +59,6 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Post("/admin/trips/{id}/albums", h.createAlbum)
 		r.Put("/admin/albums/{id}", h.updateAlbum)
 		r.Delete("/admin/albums/{id}", h.deleteAlbum)
-
-		r.Post("/admin/timeline", h.createTimelineEvent)
-		r.Put("/admin/timeline/{id}", h.updateTimelineEvent)
-		r.Delete("/admin/timeline/{id}", h.deleteTimelineEvent)
 
 		r.Put("/admin/letter", h.putLetter)
 		r.Put("/admin/site/settings", h.putSettings)
@@ -114,15 +109,6 @@ func (h *Handlers) getTrip(w http.ResponseWriter, r *http.Request) {
 	}
 	h.fillCoverThumb(r.Context(), trip)
 	Data(w, http.StatusOK, map[string]any{"trip": trip, "locations": locations})
-}
-
-func (h *Handlers) listTimeline(w http.ResponseWriter, r *http.Request) {
-	events, err := h.st.ListTimeline(r.Context())
-	if err != nil {
-		mapStoreErr(w, err)
-		return
-	}
-	Data(w, http.StatusOK, events)
 }
 
 // getLetter：门禁已解锁后可读（计划 §2 生日信页）。

@@ -36,7 +36,6 @@ onMounted(checkMe)
 const tabs = [
   { to: '/admin/trips', label: '旅行管理', name: 'admin-trips' },
   { to: '/admin/photos', label: '相册与照片', name: 'admin-photos' },
-  { to: '/admin/timeline', label: '时光轴', name: 'admin-timeline' },
   { to: '/admin/letter', label: '生日信', name: 'admin-letter' },
   { to: '/admin/settings', label: '站点设置', name: 'admin-settings' },
 ]

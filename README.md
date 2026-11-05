@@ -117,11 +117,9 @@ docker compose down
 | POST | `/api/site/unlock` | 公开（限速） | 访问口令 → 门禁会话 |
 | POST | `/api/auth/login`·`/logout` | 公开（限速） | Argon2id 校验 + 会话 |
 | GET | `/api/auth/me` | 管理员 | 当前账号 |
-| GET | `/api/trips`·`/trips/{id}` | 门禁 | 发布内容读取 |
-| GET | `/api/timeline` | 门禁 | 时光轴事件 |
+| GET | `/api/trips`·`/trips/{id}` | 门禁 | 发布内容读取（列表按出发日期倒序） |
 | GET | `/api/letter` | 门禁 | 生日信 |
 | POST/PUT/DELETE | `/api/admin/trips`（含 `{id}/locations`、`{id}/albums`） | 管理员 | 旅行/地点/相册 CRUD |
-| POST/PUT/DELETE | `/api/admin/timeline` | 管理员 | 时光轴 CRUD |
 | PUT | `/api/admin/letter` | 管理员 | 信件 upsert |
 | PUT | `/api/admin/site/settings` | 管理员 | 白名单字段 + 口令哈希化 |
 | — | `/api/trips/{id}/photos`、`/api/admin/uploads/sign`、`/api/admin/photos/confirm` | — | **501**：COS 与后台阶段（11/13–11/15）实现 |

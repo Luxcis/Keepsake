@@ -5,7 +5,7 @@ import (
 	"database/sql"
 )
 
-// 只读骨架 API 的数据访问：脚手架阶段先提供旅行/时光轴/站点设定的真实查询，
+// 只读骨架 API 的数据访问：脚手架阶段先提供旅行与站点设定的真实查询，
 // 相册、照片签名 URL、生日信与门禁在后续阶段接入（见 README 阶段路线）。
 // 约定（计划 §3.2）：存储层一律 UTC；展示层负责时区格式化。
 
@@ -35,22 +35,14 @@ type TripLocation struct {
 	SortOrder int             `json:"sort_order"`
 }
 
-type TimelineEvent struct {
-	ID          string         `json:"id"`
-	EventDate   string         `json:"event_date"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	PhotoID     sql.NullString `json:"photo_id"`
-	SortOrder   int            `json:"sort_order"`
-}
-
-// ListTrips 返回已发布的旅行列表（公开接口）。
+// ListTrips 返回已发布的旅行列表（公开接口），按出发日期倒序（最新在前）；
+// 同一天出发时沿用 sort_order 维护的相对顺序。
 func (s *Store) ListTrips(ctx context.Context) ([]Trip, error) {
 	rows, err := s.DB.QueryContext(ctx, `
 		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, status, created_at, updated_at
 		FROM trips
 		WHERE status = 'published'
-		ORDER BY sort_order ASC, start_date DESC`)
+		ORDER BY start_date DESC, sort_order ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -101,28 +93,6 @@ func (s *Store) GetTrip(ctx context.Context, id string) (*Trip, []TripLocation, 
 		locations = append(locations, l)
 	}
 	return &t, locations, rows.Err()
-}
-
-// ListTimeline 返回全部时光轴事件，按日期升序（展示层可再倒序）。
-func (s *Store) ListTimeline(ctx context.Context) ([]TimelineEvent, error) {
-	rows, err := s.DB.QueryContext(ctx, `
-		SELECT id, event_date, title, description, photo_id, sort_order
-		FROM timeline_events ORDER BY event_date ASC, sort_order ASC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	events := []TimelineEvent{}
-	for rows.Next() {
-		var e TimelineEvent
-		if err := rows.Scan(&e.ID, &e.EventDate, &e.Title, &e.Description,
-			&e.PhotoID, &e.SortOrder); err != nil {
-			return nil, err
-		}
-		events = append(events, e)
-	}
-	return events, rows.Err()
 }
 
 // SettingsWhitelist：站点配置中允许公开返回的字段（计划 §4.2）。

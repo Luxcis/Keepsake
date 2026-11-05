@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { api, isGateRequired, type TimelineEvent } from '@/api/client'
+import { api, isGateRequired, type Trip } from '@/api/client'
 import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
 import { bindMotion } from '@/compositions/motion'
 
-// 时光轴（计划 §2/§2.1）：事件按日期升序；滚动叙事 —— 中轴线随滚动生长，
-// 交替节拍滑入（门禁降级优先；reduced-motion/加载失败 → 静态呈现）。
-const events = ref<TimelineEvent[]>([])
+// 时光轴：由已发布旅行足迹自动生成，节点按出发日期从早到晚推进。
+// 滚动叙事 —— 中轴线随滚动生长，交替节拍滑入（门禁降级优先；reduced-motion/加载失败 → 静态呈现）。
+const trips = ref<Trip[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
 const gate = ref(false)
@@ -18,7 +18,14 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    events.value = await api.get<TimelineEvent[]>('/api/timeline')
+    const list = await api.get<Trip[]>('/api/trips')
+    // 公开列表按出发日期倒序；时光轴改为从早到晚，同日沿用后台维护顺序。
+    trips.value = [...list].sort(
+      (a, b) =>
+        a.start_date.localeCompare(b.start_date) ||
+        a.sort_order - b.sort_order ||
+        a.id.localeCompare(b.id),
+    )
   } catch (err) {
     if (isGateRequired(err)) {
       gate.value = true
@@ -67,8 +74,15 @@ async function runMotion() {
   }
 }
 
-function format(date: string): string {
+function formatDate(date: string): string {
   return date.replace(/-/g, '.')
+}
+
+function formatDateRange(trip: Trip): string {
+  const start = formatDate(trip.start_date)
+  if (!trip.end_date) return start
+  const end = formatDate(trip.end_date)
+  return end === start ? start : `${start} – ${end}`
 }
 
 onMounted(load)
@@ -90,43 +104,54 @@ onBeforeUnmount(() => ctx?.revert())
         <PageState
           :loading="loading"
           :error="error"
-          :empty="!loading && !error && events.length === 0"
-          empty-title="时光轴上的第一个节点还没写下。"
-          empty-hint="在管理后台补上从相识到现在的重要时刻。"
+          :empty="!loading && !error && trips.length === 0"
+          empty-title="时光轴还在等第一段旅程。"
+          empty-hint="记录并发布第一段旅行后，这里会自动出现对应的节点。"
           @retry="load"
         />
 
-      <div v-if="!loading && !error && events.length" class="timeline-wrap relative">
-        <div
-          class="timeline-line absolute left-[15px] md:left-1/2 top-0 bottom-0 w-px"
-          aria-hidden="true"
-        ></div>
-        <div class="space-y-14">
-          <article
-            v-for="(ev, i) in events"
-            :key="ev.id"
-            class="reveal relative grid md:grid-cols-2 gap-7 md:gap-16 items-center"
-          >
+        <div v-if="!loading && !error && trips.length" class="timeline-wrap relative">
+          <div
+            class="timeline-line absolute left-[15px] md:left-1/2 top-0 bottom-0 w-px"
+            aria-hidden="true"
+          ></div>
+          <div class="space-y-14">
+            <RouterLink
+              v-for="(trip, i) in trips"
+              :key="trip.id"
+              :to="`/trips/${trip.id}`"
+              class="reveal group relative grid md:grid-cols-2 gap-7 md:gap-16 items-center"
+            >
               <span
                 class="absolute left-[9px] md:left-[calc(50%-6px)] top-2 w-3 h-3 rounded-full bg-clay ring-4 ring-paper-deep"
                 aria-hidden="true"
               ></span>
               <div class="pl-12 md:pl-0" :class="i % 2 === 1 ? 'md:order-2' : 'md:text-right'">
-                <p class="eyebrow mb-2">{{ format(ev.event_date) }}</p>
-                <h2 class="section-title text-2xl">{{ ev.title }}</h2>
-                <p v-if="ev.description" class="text-sm text-muted leading-7 mt-3">
-                  {{ ev.description }}
+                <p class="eyebrow mb-2">{{ formatDateRange(trip) }}</p>
+                <h2 class="section-title text-2xl">{{ trip.title }}</h2>
+                <p v-if="trip.summary" class="text-sm text-muted leading-7 mt-3">
+                  {{ trip.summary }}
                 </p>
+                <span class="inline-flex items-center gap-1 text-xs tracking-wider text-clay mt-4">
+                  查看这段旅程
+                  <span aria-hidden="true" class="transition group-hover:translate-x-1">↗</span>
+                </span>
               </div>
               <div class="pl-12 md:pl-0" :class="i % 2 === 1 ? 'md:order-1' : ''">
                 <div class="polaroid max-w-[330px] mx-auto md:mx-0">
-                  <div class="w-full aspect-[4/3] photo-card"></div>
-                  <p class="section-title text-center text-lg text-[#6f6659] mt-3">
-                    {{ ev.title }}
-                  </p>
+                  <div class="overflow-hidden">
+                    <img
+                      v-if="trip.cover_thumb_src"
+                      :src="trip.cover_thumb_src"
+                      :alt="trip.title"
+                      loading="lazy"
+                      class="w-full aspect-[4/3] object-cover transition duration-700 group-hover:scale-[1.03]"
+                    />
+                    <div v-else class="w-full aspect-[4/3] photo-card" aria-hidden="true"></div>
+                  </div>
                 </div>
               </div>
-            </article>
+            </RouterLink>
           </div>
         </div>
       </template>

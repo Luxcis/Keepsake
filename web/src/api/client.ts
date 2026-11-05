@@ -86,15 +86,6 @@ export interface TripLocation {
   sort_order: number
 }
 
-export interface TimelineEvent {
-  id: string
-  event_date: string
-  title: string
-  description: string
-  photo_id: string | null
-  sort_order: number
-}
-
 export type SiteSettings = Record<string, string>
 
 export interface Letter {

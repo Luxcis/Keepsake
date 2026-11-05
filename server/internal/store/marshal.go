@@ -51,17 +51,6 @@ func (l TripLocation) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (e TimelineEvent) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]any{
-		"id":          e.ID,
-		"event_date":  e.EventDate,
-		"title":       e.Title,
-		"description": e.Description,
-		"photo_id":    nullStr(e.PhotoID),
-		"sort_order":  e.SortOrder,
-	})
-}
-
 func (a Album) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{
 		"id":          a.ID,

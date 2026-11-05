@@ -215,14 +215,12 @@ func TestAdminFullFlow(t *testing.T) {
 		`{"locations":[{"name":"月牙湾","note":"夕阳非常好"}]}`)
 	r.expectStatus(t, http.StatusOK)
 
-	// 时光轴事件
+	// 时光轴接口已移除：不再接受手工事件
+	r = d.do(t, "GET", "/api/timeline", "")
+	r.expectStatus(t, http.StatusNotFound)
 	r = d.do(t, "POST", "/api/admin/timeline",
 		`{"event_date":"2026-08-02","title":"一起去看海","description":"海风与日落"}`)
-	r.expectStatus(t, http.StatusCreated)
-
-	// 公开时间轴（带管理员 cookie）可见
-	r = d.do(t, "GET", "/api/timeline", "")
-	r.expectStatus(t, http.StatusOK)
+	r.expectStatus(t, http.StatusNotFound)
 
 	// 信件 upsert 与读取
 	r = d.do(t, "PUT", "/api/admin/letter", `{"title":"For You","body":"生日快乐。","reveal_enabled":true}`)
@@ -251,6 +249,73 @@ func TestAdminFullFlow(t *testing.T) {
 	r = d.do(t, "GET", "/api/admin/trips", "")
 	if strings.Contains(string(r.body), tripID) {
 		t.Fatalf("trip should be deleted")
+	}
+}
+
+// TestPublicTripsOrderedByDate：公开旅行列表按出发日期倒序（最新在前），
+// 同一天出发按 sort_order 升序；草稿不出现。
+func TestPublicTripsOrderedByDate(t *testing.T) {
+	d := newStack(t)
+
+	r := d.do(t, "POST", "/api/auth/login", `{"username":"admin","password":"secret123"}`)
+	r.expectStatus(t, http.StatusOK)
+
+	fixtures := []struct {
+		title     string
+		startDate string
+		sortOrder int
+		status    string
+	}{
+		{"较早的旅行", "2025-05-01", 0, "published"},
+		{"最新的旅行", "2026-09-10", 5, "published"},
+		{"同日后写", "2026-09-10", 2, "published"},
+		{"未发布的旅行", "2027-01-01", 0, "draft"},
+	}
+	for _, f := range fixtures {
+		body, err := json.Marshal(map[string]any{
+			"title":      f.title,
+			"start_date": f.startDate,
+			"sort_order": f.sortOrder,
+			"status":     f.status,
+		})
+		if err != nil {
+			t.Fatalf("marshal trip: %v", err)
+		}
+		r = d.do(t, "POST", "/api/admin/trips", string(body))
+		r.expectStatus(t, http.StatusCreated)
+	}
+
+	r = d.do(t, "GET", "/api/trips", "")
+	r.expectStatus(t, http.StatusOK)
+	var payload struct {
+		Data []struct {
+			Title string `json:"title"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(r.body, &payload); err != nil {
+		t.Fatalf("decode trips: %v", err)
+	}
+	got := make([]string, 0, len(payload.Data))
+	for _, item := range payload.Data {
+		got = append(got, item.Title)
+	}
+	want := []string{"同日后写", "最新的旅行", "较早的旅行"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("trip order = %v, want %v", got, want)
+	}
+}
+
+// TestTimelineEventsTableRemoved：迁移后手工时光轴事件表不再存在。
+func TestTimelineEventsTableRemoved(t *testing.T) {
+	d := newStack(t)
+
+	var count int
+	if err := d.st.DB.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'timeline_events'`).Scan(&count); err != nil {
+		t.Fatalf("inspect sqlite_master: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("timeline_events table still exists")
 	}
 }
 

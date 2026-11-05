@@ -201,62 +201,6 @@ func (h *Handlers) deleteAlbum(w http.ResponseWriter, r *http.Request) {
 	Data(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
-// ---------- 时光轴 ----------
-
-func validEvent(in *store.TimelineEventInput) (string, bool) {
-	if !validDate(in.EventDate) {
-		return "event_date 需为 YYYY-MM-DD 有效日期", false
-	}
-	if msg := validRequired("title", in.Title, 200); msg != "" {
-		return msg, false
-	}
-	if len(in.Description) > 2000 {
-		return "description 过长（上限 2000 字符）", false
-	}
-	return "", true
-}
-
-func (h *Handlers) createTimelineEvent(w http.ResponseWriter, r *http.Request) {
-	var in store.TimelineEventInput
-	if !decodeJSON(w, r, &in) {
-		return
-	}
-	if msg, ok := validEvent(&in); !ok {
-		err(w, http.StatusBadRequest, "bad_request", msg)
-		return
-	}
-	id, cerr := h.st.CreateTimelineEvent(r.Context(), in)
-	if cerr != nil {
-		mapStoreErr(w, cerr)
-		return
-	}
-	Data(w, http.StatusCreated, map[string]any{"id": id})
-}
-
-func (h *Handlers) updateTimelineEvent(w http.ResponseWriter, r *http.Request) {
-	var in store.TimelineEventInput
-	if !decodeJSON(w, r, &in) {
-		return
-	}
-	if msg, ok := validEvent(&in); !ok {
-		err(w, http.StatusBadRequest, "bad_request", msg)
-		return
-	}
-	if uerr := h.st.UpdateTimelineEvent(r.Context(), chi.URLParam(r, "id"), in); uerr != nil {
-		mapStoreErr(w, uerr)
-		return
-	}
-	Data(w, http.StatusOK, map[string]any{"updated": true})
-}
-
-func (h *Handlers) deleteTimelineEvent(w http.ResponseWriter, r *http.Request) {
-	if derr := h.st.DeleteTimelineEvent(r.Context(), chi.URLParam(r, "id")); derr != nil {
-		mapStoreErr(w, derr)
-		return
-	}
-	Data(w, http.StatusOK, map[string]any{"deleted": true})
-}
-
 // ---------- 生日信（单实例 upsert） ----------
 
 func (h *Handlers) putLetter(w http.ResponseWriter, r *http.Request) {

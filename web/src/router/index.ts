@@ -18,7 +18,6 @@ export const routes = [
       { path: '', redirect: { name: 'admin-trips' } },
       { path: 'trips', name: 'admin-trips', component: () => import('@/views/admin/AdminTripsView.vue'), meta: { title: '旅行管理' } },
       { path: 'photos', name: 'admin-photos', component: () => import('@/views/admin/AdminPhotosView.vue'), meta: { title: '相册与照片' } },
-      { path: 'timeline', name: 'admin-timeline', component: () => import('@/views/admin/AdminTimelineView.vue'), meta: { title: '时光轴事件' } },
       { path: 'letter', name: 'admin-letter', component: () => import('@/views/admin/AdminLetterView.vue'), meta: { title: '生日信' } },
       { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/AdminSettingsView.vue'), meta: { title: '站点设置' } },
     ],
