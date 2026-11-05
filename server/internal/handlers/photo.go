@@ -1,14 +1,16 @@
 package handlers
 
 import (
+	"context"
+	"database/sql"
 	"errors"
-	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"keepsake/internal/cosutil"
 	"keepsake/internal/store"
 )
@@ -220,19 +222,9 @@ func (h *Handlers) servePhotos(w http.ResponseWriter, r *http.Request, tripID st
 				slog.Warn("photo sign get failed", "key", p.COSKey, "err", serr)
 				src = ""
 			}
-			// 缩略图：优先独立对象；否则把缩放处理参数签入原图 GET URL ——
-			// 处理参数必须参与签名，签名后追加会被 COS 校验拒绝（403）。
 			thumbSrc := ""
-			if p.ThumbnailKey.Valid {
-				thumbSrc, _ = h.cos.SignGET(p.ThumbnailKey.String)
-			}
-			if thumbSrc == "" && src != "" {
-				t, terr := h.cos.SignGETThumb(p.COSKey)
-				if terr != nil {
-					slog.Warn("photo sign thumb failed", "key", p.COSKey, "err", terr)
-				} else {
-					thumbSrc = t
-				}
+			if src != "" {
+				thumbSrc = h.signThumb(p.COSKey, p.ThumbnailKey)
 			}
 			row["src"] = src
 			row["thumb_src"] = thumbSrc
@@ -243,6 +235,47 @@ func (h *Handlers) servePhotos(w http.ResponseWriter, r *http.Request, tripID st
 		out = append(out, row)
 	}
 	Data(w, http.StatusOK, map[string]any{"enabled": enabled, "photos": out})
+}
+
+// signThumb 签名照片缩略图 URL：优先独立缩略图对象；否则把缩放处理参数
+// 签入原图 GET URL —— 处理参数必须参与签名，签名后追加会被 COS 校验拒绝（403）。
+// 失败时返回空串并记 warn（photo sign 语义：不阻断内容响应）。
+func (h *Handlers) signThumb(cosKey string, thumbKey sql.NullString) string {
+	if !h.cos.Enabled() {
+		return ""
+	}
+	if thumbKey.Valid {
+		u, gerr := h.cos.SignGET(thumbKey.String)
+		if gerr == nil {
+			return u
+		}
+		slog.Warn("photo sign thumb failed", "key", thumbKey.String, "err", gerr)
+	}
+	u, terr := h.cos.SignGETThumb(cosKey)
+	if terr != nil {
+		slog.Warn("photo sign thumb failed", "key", cosKey, "err", terr)
+		return ""
+	}
+	return u
+}
+
+// fillCoverThumb 为单个旅行按其封面照片签名 cover_thumb_src；
+// 悬挂引用（照片已删或该封面属于其它旅行）与 COS 未配置时静默保持为空。
+func (h *Handlers) fillCoverThumb(ctx context.Context, t *store.Trip) {
+	if !h.cos.Enabled() || !t.CoverPhotoID.Valid {
+		return
+	}
+	tripID, cosKey, thumbKey, gerr := h.st.GetPhotoKeys(ctx, t.CoverPhotoID.String)
+	if gerr != nil || tripID != t.ID {
+		return
+	}
+	t.CoverThumbSrc = h.signThumb(cosKey, thumbKey)
+}
+
+func (h *Handlers) fillCoverThumbs(ctx context.Context, trips []store.Trip) {
+	for i := range trips {
+		h.fillCoverThumb(ctx, &trips[i])
+	}
 }
 
 func nilOrValue(valid bool, v string) any {

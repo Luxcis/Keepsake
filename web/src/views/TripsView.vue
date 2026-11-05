@@ -84,7 +84,16 @@ onBeforeUnmount(() => ctx?.revert())
             class="group reveal"
           >
             <div class="photo-card aspect-[5/4] mb-5 rounded-sm">
-              <div class="w-full h-full flex items-end p-5 text-xs tracking-widest">
+              <!-- 封面：签名的缩略图 URL（后台选择后返回）；无封面回退渐变占位 -->
+              <img
+                v-if="trip.cover_thumb_src"
+                :src="trip.cover_thumb_src"
+                :alt="trip.title"
+                loading="lazy"
+                class="w-full h-full object-cover transition duration-700 group-hover:scale-[1.03]"
+              />
+              <div v-else class="placeholder absolute inset-0" aria-hidden="true"></div>
+              <div class="absolute inset-0 flex items-end p-5 text-xs tracking-widest pointer-events-none">
                 <span class="bg-paper/90 text-ink px-3 py-1.5">
                   {{ String(i + 1).padStart(2, '0') }}
                 </span>
@@ -106,7 +115,7 @@ onBeforeUnmount(() => ctx?.revert())
 </template>
 
 <style scoped>
-.photo-card > div {
+.placeholder {
   background:
     linear-gradient(150deg, rgba(38, 60, 59, 0.4), rgba(38, 60, 59, 0.05)),
     linear-gradient(130deg, #93a896, #cfc9ba 55%, #c4a578 90%);

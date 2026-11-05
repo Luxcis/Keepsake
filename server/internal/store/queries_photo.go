@@ -121,7 +121,22 @@ func (s *Store) ListPhotosByTrip(ctx context.Context, tripID string) ([]Photo, e
 	return out, rows.Err()
 }
 
+// GetPhotoKeys 查询单张照片的归属与对象 Key，供管理端封面校验与公开封面签名共用。
+func (s *Store) GetPhotoKeys(ctx context.Context, id string) (tripID, cosKey string, thumbKey sql.NullString, err error) {
+	err = s.DB.QueryRowContext(ctx,
+		`SELECT trip_id, cos_key, thumbnail_key FROM photos WHERE id = ?`, id).
+		Scan(&tripID, &cosKey, &thumbKey)
+	if err == sql.ErrNoRows {
+		return "", "", sql.NullString{}, ErrNotFound
+	}
+	if err != nil {
+		return "", "", sql.NullString{}, err
+	}
+	return tripID, cosKey, thumbKey, nil
+}
+
 // DeletePhoto 删除数据库关联并返回 COS Key（原图+缩略图）供调用方补偿清理（计划 §4.1）。
+// cover_photo_id 无外键（与 photos 循环引用），删除照片时在此归空相关旅行封面。
 func (s *Store) DeletePhoto(ctx context.Context, id string) (cosKey, thumbKey string, err error) {
 	var thumb sql.NullString
 	err = s.DB.QueryRowContext(ctx, `SELECT cos_key, thumbnail_key FROM photos WHERE id = ?`, id).
@@ -133,6 +148,10 @@ func (s *Store) DeletePhoto(ctx context.Context, id string) (cosKey, thumbKey st
 		return "", "", err
 	}
 	if _, err := s.DB.ExecContext(ctx, `DELETE FROM photos WHERE id = ?`, id); err != nil {
+		return "", "", err
+	}
+	if _, err := s.DB.ExecContext(ctx,
+		`UPDATE trips SET cover_photo_id = NULL WHERE cover_photo_id = ?`, id); err != nil {
 		return "", "", err
 	}
 	return cosKey, thumb.String, nil

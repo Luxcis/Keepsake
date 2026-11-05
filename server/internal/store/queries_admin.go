@@ -150,8 +150,11 @@ type TripInput struct {
 	Summary   string  `json:"summary"`
 	StartDate string  `json:"start_date"`
 	EndDate   *string `json:"end_date"`
-	SortOrder int     `json:"sort_order"`
-	Status    string  `json:"status"`
+	// CoverPhotoID：缺失/null = 保持不变（兼容 toggleStatus 等不带该字段的调用）；
+	// "" = 清除；非空 = 设置（管理端校验照片存在且属于该旅行）。
+	CoverPhotoID *string `json:"cover_photo_id"`
+	SortOrder    int     `json:"sort_order"`
+	Status       string  `json:"status"`
 }
 
 func (s *Store) CreateTrip(ctx context.Context, in TripInput) (string, error) {
@@ -175,10 +178,19 @@ func nullPtrStr(p *string) any {
 }
 
 func (s *Store) UpdateTrip(ctx context.Context, id string, in TripInput) error {
+	// cover_photo_id 只在显式传入（指针非 nil）时写入；否则保持现状，方便既有调用方。
+	set := "title = ?, summary = ?, start_date = ?, end_date = ?, sort_order = ?, status = ?, updated_at = ?"
+	args := []any{in.Title, in.Summary, in.StartDate, nullPtrStr(in.EndDate),
+		in.SortOrder, in.Status, nowUTC()}
+	if in.CoverPhotoID != nil {
+		set += ", cover_photo_id = ?"
+		args = append(args, nullPtrStr(in.CoverPhotoID))
+	}
+	args = append(args, id)
+
 	res, err := s.DB.ExecContext(ctx, `
-		UPDATE trips SET title=?, summary=?, start_date=?, end_date=?, sort_order=?, status=?, updated_at=?
-		WHERE id=?`,
-		in.Title, in.Summary, in.StartDate, nullPtrStr(in.EndDate), in.SortOrder, in.Status, nowUTC(), id)
+		UPDATE trips SET `+set+`
+		WHERE id = ?`, args...)
 	if err != nil {
 		return err
 	}

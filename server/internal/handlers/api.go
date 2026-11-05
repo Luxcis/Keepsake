@@ -101,6 +101,7 @@ func (h *Handlers) listTrips(w http.ResponseWriter, r *http.Request) {
 		mapStoreErr(w, err)
 		return
 	}
+	h.fillCoverThumbs(r.Context(), trips)
 	Data(w, http.StatusOK, trips)
 }
 
@@ -111,6 +112,7 @@ func (h *Handlers) getTrip(w http.ResponseWriter, r *http.Request) {
 		mapStoreErr(w, err)
 		return
 	}
+	h.fillCoverThumb(r.Context(), trip)
 	Data(w, http.StatusOK, map[string]any{"trip": trip, "locations": locations})
 }
 

@@ -19,6 +19,7 @@ func (h *Handlers) listAdminTrips(w http.ResponseWriter, r *http.Request) {
 		mapStoreErr(w, err)
 		return
 	}
+	h.fillCoverThumbs(r.Context(), trips)
 	Data(w, http.StatusOK, trips)
 }
 
@@ -29,6 +30,7 @@ func (h *Handlers) getAdminTrip(w http.ResponseWriter, r *http.Request) {
 		mapStoreErr(w, err)
 		return
 	}
+	h.fillCoverThumb(r.Context(), trip)
 	Data(w, http.StatusOK, map[string]any{"trip": trip, "locations": locations})
 }
 
@@ -69,6 +71,7 @@ func (h *Handlers) createTrip(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) updateTrip(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
 	var in store.TripInput
 	if !decodeJSON(w, r, &in) {
 		return
@@ -77,7 +80,19 @@ func (h *Handlers) updateTrip(w http.ResponseWriter, r *http.Request) {
 		err(w, http.StatusBadRequest, "bad_request", msg)
 		return
 	}
-	if uerr := h.st.UpdateTrip(r.Context(), chi.URLParam(r, "id"), in); uerr != nil {
+	// 封面校验：非空指针且非空串才需要落地校验（"" 是清除，缺失是保持）。
+	if in.CoverPhotoID != nil && *in.CoverPhotoID != "" {
+		tripID, _, _, perr := h.st.GetPhotoKeys(r.Context(), *in.CoverPhotoID)
+		if perr != nil && perr != store.ErrNotFound {
+			mapStoreErr(w, perr)
+			return
+		}
+		if perr != nil || tripID != id {
+			err(w, http.StatusBadRequest, "bad_request", "封面照片不存在或不属于该旅行")
+			return
+		}
+	}
+	if uerr := h.st.UpdateTrip(r.Context(), id, in); uerr != nil {
 		mapStoreErr(w, uerr)
 		return
 	}

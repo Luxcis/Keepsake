@@ -16,10 +16,12 @@ type Trip struct {
 	StartDate    string         `json:"start_date"`
 	EndDate      sql.NullString `json:"end_date"`
 	CoverPhotoID sql.NullString `json:"cover_photo_id"`
-	SortOrder    int            `json:"sort_order"`
-	Status       string         `json:"status"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
+	// 瞬态字段：handlers 层按 CoverPhotoID 签名的封面缩略图 URL（store 不写，见 marshal.go）。
+	CoverThumbSrc string `json:"cover_thumb_src"`
+	SortOrder     int    `json:"sort_order"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type TripLocation struct {

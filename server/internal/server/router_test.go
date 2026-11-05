@@ -246,6 +246,107 @@ func TestAdminFullFlow(t *testing.T) {
 	}
 }
 
+// TestTripCoverFlow：封面设置/保持/清除/校验/删除归空（COS 为 Noop，URL 一律空串降级）。
+func TestTripCoverFlow(t *testing.T) {
+	d := newStack(t)
+	ctx := context.Background()
+
+	// 登录（管理员会话即门禁豁免）
+	r := d.do(t, "POST", "/api/auth/login", `{"username":"admin","password":"secret123"}`)
+	r.expectStatus(t, http.StatusOK)
+
+	// 两个旅行 + 各一张照片（直接落库绕过 Noop COS，open 拿不到对象）
+	for _, title := range []string{"海边", "山里"} {
+		r := d.do(t, "POST", "/api/admin/trips",
+			`{"title":"`+title+`","start_date":"2026-08-01","status":"published"}`)
+		r.expectStatus(t, http.StatusCreated)
+	}
+	r = d.do(t, "GET", "/api/admin/trips", "")
+	admin, ok := r.decode(t)["data"].([]any)
+	if !ok || len(admin) != 2 {
+		t.Fatalf("admin trips = %s", r.body)
+	}
+	tripA, _ := admin[0].(map[string]any)["id"].(string)
+	tripB, _ := admin[1].(map[string]any)["id"].(string)
+	photoA, perr := d.st.CreatePhoto(ctx, store.PhotoInput{
+		TripID: tripA, COSKey: "trips/" + tripA + "/202608/pa.jpg", Title: "海"})
+	if perr != nil {
+		t.Fatalf("create photoA: %v", perr)
+	}
+	photoB, perr := d.st.CreatePhoto(ctx, store.PhotoInput{
+		TripID: tripB, COSKey: "trips/" + tripB + "/202608/pb.jpg", Title: "山"})
+	if perr != nil {
+		t.Fatalf("create photoB: %v", perr)
+	}
+
+	putCover := func(trip, photo string) apiResult {
+		return d.do(t, "PUT", "/api/admin/trips/"+trip,
+			`{"title":"海边","start_date":"2026-08-01","status":"published","cover_photo_id":"`+photo+`"}`)
+	}
+	adminCover := func(trip string) string {
+		res := d.do(t, "GET", "/api/admin/trips/"+trip, "")
+		res.expectStatus(t, http.StatusOK)
+		data, _ := res.decode(t)["data"].(map[string]any)["trip"].(map[string]any)
+		id, _ := data["cover_photo_id"].(string)
+		if thumb, _ := data["cover_thumb_src"].(string); thumb != "" {
+			t.Fatalf("noop COS must keep thumb empty, got %q", thumb)
+		}
+		return id
+	}
+
+	// 1) 设置封面：admin 详情可见，公开列表同样可见（签名 URL 空串降级）
+	r = putCover(tripA, photoA)
+	r.expectStatus(t, http.StatusOK)
+	if got := adminCover(tripA); got != photoA {
+		t.Fatalf("admin cover = %q, want %q", got, photoA)
+	}
+	r = d.do(t, "GET", "/api/trips", "")
+	r.expectStatus(t, http.StatusOK)
+	list, _ := r.decode(t)["data"].([]any)
+	for _, item := range list {
+		m, _ := item.(map[string]any)
+		if m["id"].(string) != tripA {
+			continue
+		}
+		if cid, _ := m["cover_photo_id"].(string); cid != photoA {
+			t.Fatalf("public cover = %q, want %q", cid, photoA)
+		}
+	}
+
+	// 2) 不带 cover_photo_id 的全量 PUT（toggleStatus 语义）→ 保持现有封面
+	r = d.do(t, "PUT", "/api/admin/trips/"+tripA,
+		`{"title":"海边","start_date":"2026-08-01","status":"draft"}`)
+	r.expectStatus(t, http.StatusOK)
+	if got := adminCover(tripA); got != photoA {
+		t.Fatalf("cover should persist without field, got %q", got)
+	}
+
+	// 3) "" → 清除（null）
+	r = putCover(tripA, "")
+	r.expectStatus(t, http.StatusOK)
+	if got := adminCover(tripA); got != "" {
+		t.Fatalf("cover should be cleared, got %q", got)
+	}
+
+	// 4) 校验：跨旅行照片与不存在的照片 → 400
+	r = putCover(tripA, photoB)
+	r.expectStatus(t, http.StatusBadRequest)
+	if code := r.errorCode(t); code != "bad_request" {
+		t.Fatalf("cross-trip code = %s", code)
+	}
+	r = putCover(tripA, "no-such-photo")
+	r.expectStatus(t, http.StatusBadRequest)
+
+	// 5) 删除封面照片 → cover_photo_id 归空（无外键，应用层补偿）
+	r = putCover(tripA, photoA)
+	r.expectStatus(t, http.StatusOK)
+	r = d.do(t, "DELETE", "/api/admin/photos/"+photoA, "")
+	r.expectStatus(t, http.StatusOK)
+	if got := adminCover(tripA); got != "" {
+		t.Fatalf("cover should be nulled after photo delete, got %q", got)
+	}
+}
+
 func TestCSRFOriginRejected(t *testing.T) {
 	d := newStack(t)
 

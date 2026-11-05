@@ -24,16 +24,17 @@ func nullF64(nf sql.NullFloat64) any { return valueOrNull(nf.Valid, nf.Float64) 
 
 func (t Trip) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{
-		"id":             t.ID,
-		"title":          t.Title,
-		"summary":        t.Summary,
-		"start_date":     t.StartDate,
-		"end_date":       nullStr(t.EndDate),
-		"cover_photo_id": nullStr(t.CoverPhotoID),
-		"sort_order":     t.SortOrder,
-		"status":         t.Status,
-		"created_at":     t.CreatedAt,
-		"updated_at":     t.UpdatedAt,
+		"id":              t.ID,
+		"title":           t.Title,
+		"summary":         t.Summary,
+		"start_date":      t.StartDate,
+		"end_date":        nullStr(t.EndDate),
+		"cover_photo_id":  nullStr(t.CoverPhotoID),
+		"cover_thumb_src": t.CoverThumbSrc,
+		"sort_order":      t.SortOrder,
+		"status":          t.Status,
+		"created_at":      t.CreatedAt,
+		"updated_at":      t.UpdatedAt,
 	})
 }
 

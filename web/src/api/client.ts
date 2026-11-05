@@ -67,6 +67,8 @@ export interface Trip {
   start_date: string
   end_date: string | null
   cover_photo_id: string | null
+  // 服务端按封面照片签名的缩略图 URL（COS 未配置/签名失败时为空串 → 前端回退占位）
+  cover_thumb_src?: string
   sort_order: number
   status: string
   created_at: string

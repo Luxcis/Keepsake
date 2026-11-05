@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { api, type Trip, type TripLocation } from '@/api/client'
+import { api, type PhotoItem, type Trip, type TripLocation } from '@/api/client'
 
-// 旅行管理：创建/编辑/发布樖墙 + 地点维护（整组替换后端 API）。
+// 旅行管理：创建/编辑/发布樖墙 + 地点维护 + 封面选择（整组替换后端 API）。
 const trips = ref<Trip[]>([])
 const loadErr = ref<string | null>(null)
 const message = ref<string | null>(null)
@@ -13,6 +13,7 @@ const form = reactive({
   summary: '',
   start_date: '',
   end_date: '',
+  cover_photo_id: '', // '' = 未选（保存时清除）；保存后生效
   sort_order: 0,
   status: 'draft' as 'draft' | 'published',
 })
@@ -20,6 +21,19 @@ const form = reactive({
 const locations = reactive({
   tripId: '', // 绑定的旅行
   rows: [] as { name: string; note: string; latitude: string; longitude: string }[],
+})
+
+// 封面选择：编辑模式从本旅行相册选一张作卡片封面；缩略图来自管理端照片列表。
+const coverPhotos = ref<PhotoItem[]>([])
+const coverPickerOpen = ref(false)
+const coverLoading = ref(false)
+// 当前旅行已保存封面的缩略图（进编辑时从列表带出，保存后随列表刷新）
+const savedCoverPreview = ref('')
+
+const coverPreview = computed(() => {
+  if (!form.cover_photo_id) return ''
+  const fromPicker = coverPhotos.value.find((p) => p.id === form.cover_photo_id)
+  return fromPicker?.thumb_src ?? savedCoverPreview.value
 })
 
 async function load() {
@@ -39,10 +53,14 @@ function startCreate() {
   form.summary = ''
   form.start_date = today
   form.end_date = ''
+  form.cover_photo_id = ''
   form.sort_order = trips.value.length
   form.status = 'draft'
   locations.tripId = ''
   locations.rows = []
+  coverPhotos.value = []
+  coverPickerOpen.value = false
+  savedCoverPreview.value = ''
   message.value = null
 }
 
@@ -52,10 +70,40 @@ function startEdit(t: Trip) {
   form.summary = t.summary
   form.start_date = t.start_date
   form.end_date = t.end_date ?? ''
+  form.cover_photo_id = t.cover_photo_id ?? ''
   form.sort_order = t.sort_order
   form.status = t.status as 'draft' | 'published'
+  locations.tripId = ''
+  locations.rows = []
+  coverPhotos.value = []
+  coverPickerOpen.value = false
+  savedCoverPreview.value = t.cover_thumb_src ?? ''
   message.value = null
   void editLocations(t.id)
+}
+
+async function loadCoverPhotos() {
+  if (coverLoading.value || form.id === '') return
+  coverLoading.value = true
+  try {
+    const data = await api.get<{ enabled: boolean; photos: PhotoItem[] }>(
+      `/api/admin/trips/${form.id}/photos`,
+    )
+    coverPhotos.value = data.photos
+  } catch (err) {
+    message.value = err instanceof Error ? err.message : '照片列表加载失败'
+  }
+  coverLoading.value = false
+}
+
+async function toggleCoverPicker() {
+  coverPickerOpen.value = !coverPickerOpen.value
+  if (coverPickerOpen.value) await loadCoverPhotos()
+}
+
+// 再点一次选中的照片即取消选择（= 清除）。
+function pickCover(p: PhotoItem) {
+  form.cover_photo_id = form.cover_photo_id === p.id ? '' : p.id
 }
 
 async function save() {
@@ -63,7 +111,7 @@ async function save() {
     message.value = '请补齐标题与开始日期。'
     return
   }
-  const body = {
+  const base = {
     title: form.title,
     summary: form.summary,
     start_date: form.start_date,
@@ -73,12 +121,16 @@ async function save() {
   }
   try {
     if (form.id === '') {
-      const created = await api.post<{ id: string }>('/api/admin/trips', body)
+      // 创建分支不发 cover（封面照片必须先属于本旅行）
+      const created = await api.post<{ id: string }>('/api/admin/trips', base)
       form.id = created.id
       message.value = '已创建，可继续编辑地点或照片。'
     } else {
-      await api.put(`/api/admin/trips/${form.id}`, body)
+      await api.put(`/api/admin/trips/${form.id}`, { ...base, cover_photo_id: form.cover_photo_id })
       message.value = '已保存。'
+      // 保存后刷新预览缓存（下方 load() 会重拉列表）
+      const fresh = trips.value.find((x) => x.id === form.id)
+      savedCoverPreview.value = fresh?.cover_thumb_src ?? ''
     }
     await load()
   } catch (err) {
@@ -251,6 +303,51 @@ const editingExisting = computed(() => form.id !== '')
       </button>
     </div>
 
+    <!-- 封面选择（编辑中的旅行）：从本旅行相册挑一张作前台卡片封面 -->
+    <div v-if="editingExisting" class="bg-paper border border-line rounded-sm p-6 space-y-3">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <h3 class="section-title text-lg">封面照片（前台旅行卡展示）</h3>
+        <div class="flex items-center gap-4 text-xs">
+          <button type="button" class="underline text-muted hover:text-ink" @click="toggleCoverPicker">
+            {{ coverPickerOpen ? '收起照片列表' : '从相册选择' }}
+          </button>
+          <button
+            v-if="form.cover_photo_id"
+            type="button"
+            class="underline text-muted hover:text-clay"
+            @click="form.cover_photo_id = ''"
+          >
+            清除封面
+          </button>
+        </div>
+      </div>
+
+      <div v-if="coverPreview" class="flex items-center gap-3">
+        <img :src="coverPreview" alt="封面预览" class="w-28 h-20 object-cover rounded-sm border border-line" />
+        <p class="text-xs text-muted">当前选择，点击「保存修改」生效。</p>
+      </div>
+      <p v-else class="text-xs text-muted">未选择封面，前台将显示渐变占位色块。</p>
+
+      <div v-if="coverPickerOpen" class="grid grid-cols-3 md:grid-cols-5 gap-2 max-h-72 overflow-y-auto">
+        <p v-if="coverLoading" class="text-xs text-muted">照片加载中…</p>
+        <p v-else-if="!coverPhotos.length" class="text-xs text-muted">
+          这个旅行还没有照片，先到「照片管理」上传后再来选封面。
+        </p>
+        <button
+          v-for="p in coverPhotos"
+          :key="p.id"
+          type="button"
+          class="photo-card aspect-[4/3] rounded-sm border transition overflow-hidden"
+          :class="form.cover_photo_id === p.id ? 'border-moss ring-2 ring-moss' : 'border-transparent hover:border-clay'"
+          :title="p.title"
+          @click="pickCover(p)"
+        >
+          <img v-if="p.thumb_src" :src="p.thumb_src" :alt="p.title" loading="lazy" class="w-full h-full object-cover" />
+          <span v-else class="text-[10px] text-muted px-1 line-clamp-2">{{ p.title || '无预览' }}</span>
+        </button>
+      </div>
+    </div>
+
     <!-- 旅行列表 -->
     <div class="space-y-3">
       <h2 class="section-title text-xl">全部旅行（{{ trips.length }}）</h2>
@@ -261,10 +358,18 @@ const editingExisting = computed(() => form.id !== '')
         :key="t.id"
         class="border border-line rounded-sm bg-paper p-5 flex flex-wrap items-center gap-3 justify-between"
       >
-        <div>
-          <p class="text-[10px] text-clay tracking-widest">{{ t.start_date }} · {{ t.status === 'published' ? '已发布' : '草稿' }}</p>
-          <h3 class="section-title text-lg">{{ t.title }}</h3>
-          <p class="text-xs text-muted mt-1 max-w-xl line-clamp-2">{{ t.summary }}</p>
+        <div class="flex items-center gap-3">
+          <img
+            v-if="t.cover_thumb_src"
+            :src="t.cover_thumb_src"
+            alt=""
+            class="w-14 h-11 object-cover rounded-sm border border-line"
+          />
+          <div>
+            <p class="text-[10px] text-clay tracking-widest">{{ t.start_date }} · {{ t.status === 'published' ? '已发布' : '草稿' }}</p>
+            <h3 class="section-title text-lg">{{ t.title }}</h3>
+            <p class="text-xs text-muted mt-1 max-w-xl line-clamp-2">{{ t.summary }}</p>
+          </div>
         </div>
         <div class="flex items-center gap-2 text-xs">
           <button class="border border-line rounded-full px-4 py-2 hover:bg-ink hover:text-paper transition" @click="startEdit(t)">编辑</button>
