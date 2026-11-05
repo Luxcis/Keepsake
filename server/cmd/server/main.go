@@ -168,6 +168,7 @@ func run() error {
 	if cfg.RedisAddr != "" {
 		rdb = redis.NewClient(&redis.Options{
 			Addr:        cfg.RedisAddr,
+			Password:    cfg.RedisPassword, // REDIS_PASSWORD；为空即无密码（go-redis 跳过 AUTH）
 			DialTimeout: 2 * time.Second,
 		})
 	}

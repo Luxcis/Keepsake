@@ -18,6 +18,8 @@ services:
       DB_FILE: ${DB_FILE:-journey.db}
       # Redis 可选：留空即不启用（内存会话/限流）；启用场景见上方 redis 服务注释
       REDIS_ADDR: ${REDIS_ADDR:-}
+      # 连接服务器已有 Redis（开启 requirepass）时填 REDIS_PASSWORD；内置/本地 redis 留空
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       # 管理员自动引导：.env 配置 ADMIN_USERNAME/ADMIN_PASSWORD 后，app 启动即首次引导；
       # 同名已存在则跳过（不重置密码）。全部留空则不进容器，也不做引导。

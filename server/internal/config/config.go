@@ -21,6 +21,9 @@ type Config struct {
 	// RedisAddr: 为空表示不启用 Redis（合法部署形态，会话/限流退化为进程内存；
 	// 多实例部署需启用）。计划 §3.2：已配置但不可用时认证与管理写入应失败关闭。
 	RedisAddr string
+	// RedisPassword: 可选；连接开启 requirepass 的 Redis（如服务器已有实例）时填写，
+	// 为空表示无密码（compose 内置 redis 即无密码）。跟密钥类变量同风格，不落盘。
+	RedisPassword string
 	// CookieSecure: 会话 Cookie 的 Secure 位。默认不启用；生产 HTTPS 网关下显式开启。
 	// 本地 HTTP 联调（如 compose 无 TLS）保持 false。
 	CookieSecure bool
@@ -51,6 +54,7 @@ func Load() Config {
 		DataDir:       getEnv("DATA_DIR", "./data"),
 		DBFile:        getEnv("DB_FILE", "journey.db"),
 		RedisAddr:     getEnv("REDIS_ADDR", ""),
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		CookieSecure:  getCookieSecure(getEnv("COOKIE_SECURE", "")),
 		COSSecretID:   os.Getenv("COS_SECRET_ID"),
 		COSSecretKey:  os.Getenv("COS_SECRET_KEY"),
