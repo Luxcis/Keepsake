@@ -13,17 +13,19 @@ import {
   type LiveUploadPlan,
   type MediaPart,
   type PhotoUploadPlan,
+  type VideoUploadPlan,
 } from '@/lib/livePhoto'
 import PageState from '@/components/PageState.vue'
 
 // 相册与照片（计划 §4.3 + §2 管理行）：
 // 选择文件 → 实况识别/拆分 → 签名 → 浏览器直传（图片 + 视频） → 确认入库 → 维护说明/排序/删除。
+// 未配对的视频作为独立视频条目上传；照片 ≤30MB、视频 ≤400MB。
 
 interface UploadJob {
   name: string
   pct: number
   done: boolean
-  kind: 'live' | 'photo' | 'skipped'
+  kind: 'live' | 'photo' | 'video' | 'skipped'
   failed?: string
   warning?: string
 }
@@ -105,9 +107,9 @@ async function onFilesChosen(ev: Event) {
   }
 }
 
-// uploadOne 上传一张照片（实况照片含视频）；视频失败时降级为普通照片并返回提示。
+// uploadOne 上传一条媒体：照片、实况照片或独立视频；实况视频失败时降级为普通照片并返回提示。
 async function uploadOne(
-  plan: PhotoUploadPlan | LiveUploadPlan,
+  plan: PhotoUploadPlan | LiveUploadPlan | VideoUploadPlan,
   job: UploadJob,
 ): Promise<string | undefined> {
   const total = planBytes(plan)
@@ -115,6 +117,13 @@ async function uploadOne(
   const track = (size: number) => (pct: number) => {
     const doneBytes = (size * pct) / 100
     job.pct = total > 0 ? Math.min(99, Math.round(((uploaded + doneBytes) / total) * 100)) : 0
+  }
+
+  // 独立视频以视频对象本身作为 cos_key 入库，服务端据此写入 media_kind=video。
+  if (plan.kind === 'video') {
+    const videoKey = await uploadObject(plan.video, track(plan.video.blob.size))
+    await confirmPhoto(plan.name, videoKey)
+    return undefined
   }
 
   const photoKey = await uploadObject(plan.photo, track(plan.photo.blob.size))
@@ -229,7 +238,7 @@ onMounted(async () => {
         </label>
 
         <label class="ml-auto flex items-center gap-2 text-xs text-muted">
-          选择文件（可多选，单张 ≤30MB；照片 + 同名视频会自动识别为实况照片）
+          选择文件（可多选，照片 ≤30MB、视频 ≤400MB；同名照片 + 视频识别为实况照片，单独视频作为视频上传）
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime"
@@ -250,9 +259,9 @@ onMounted(async () => {
           <div class="flex justify-between mb-1 gap-3">
             <span class="truncate">
               <span
-                v-if="j.kind === 'live'"
+                v-if="j.kind === 'live' || j.kind === 'video'"
                 class="mr-1 rounded-full bg-moss/15 px-1.5 py-0.5 text-[10px] text-moss"
-                >实况</span
+                >{{ j.kind === 'live' ? '实况' : '视频' }}</span
               >
               {{ j.name }}
             </span>
@@ -285,20 +294,28 @@ onMounted(async () => {
         class="border border-line rounded-sm bg-paper p-3 space-y-2"
       >
         <div class="photo-card aspect-[4/3] rounded-sm">
+          <video
+            v-if="p.media_kind === 'video' && p.video_src"
+            :src="p.video_src"
+            preload="metadata"
+            muted
+            playsinline
+            class="w-full h-full object-cover"
+          ></video>
           <img
-            v-if="p.thumb_src"
+            v-else-if="p.thumb_src"
             :src="p.thumb_src"
             :alt="p.title"
             loading="lazy"
             class="w-full h-full object-cover"
           />
           <div v-else class="w-full h-full flex items-center justify-center text-[10px] text-muted">
-            待 COS 配置后可见
+            {{ p.media_kind === 'video' ? '视频地址签名失败' : '待 COS 配置后可见' }}
           </div>
           <span
-            v-if="p.video_src"
+            v-if="p.media_kind === 'video' || p.video_src"
             class="absolute top-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white"
-            >实况</span
+            >{{ p.media_kind === 'video' ? '视频' : '实况' }}</span
           >
         </div>
 

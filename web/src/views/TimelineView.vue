@@ -5,7 +5,7 @@ import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
 import { bindMotion } from '@/compositions/motion'
 
-// 时光轴：由已发布旅行足迹自动生成，节点按出发日期从早到晚推进。
+// 时光轴：由已发布旅行自动生成，节点按出发日期从早到晚推进。
 // 滚动叙事 —— 中轴线随滚动生长，交替节拍滑入（门禁降级优先；reduced-motion/加载失败 → 静态呈现）。
 const trips = ref<Trip[]>([])
 const loading = ref(true)

@@ -86,7 +86,7 @@ onBeforeUnmount(() => ctx?.revert())
       <span aria-hidden="true">SCROLL TO EXPLORE ↓</span>
     </div>
 
-    <!-- 简介 + 旅行足迹入口（脚手架静态版） -->
+    <!-- 简介 + 足迹入口（脚手架静态版） -->
     <section class="deco-wrap max-w-7xl mx-auto px-6 md:px-12 py-20 grid md:grid-cols-2 gap-12 items-center">
       <div class="deco-anim">
         <p class="eyebrow mb-5">A NOTE FOR YOU</p>

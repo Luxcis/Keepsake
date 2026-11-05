@@ -9,6 +9,12 @@ import (
 // 照片数据访问（计划 §4.1 photos / §4.3 上传链路）。
 // 只保存 COS Key 与元数据，不存二进制；URL 由 handlers 层签名。
 
+// MediaKind 区分媒体条目类型：照片（含实况照片）与单独上传的视频。
+const (
+	MediaPhoto = "photo"
+	MediaVideo = "video"
+)
+
 type Photo struct {
 	ID           string         `json:"id"`
 	TripID       string         `json:"trip_id"`
@@ -16,7 +22,9 @@ type Photo struct {
 	COSKey       string         `json:"cos_key"`
 	ThumbnailKey sql.NullString `json:"thumbnail_key"`
 	// VideoKey 为实况照片的视频对象 Key；NULL 表示普通静态照片。
-	VideoKey    sql.NullString `json:"video_key"`
+	VideoKey sql.NullString `json:"video_key"`
+	// MediaKind 为 photo 或 video；视频条目的 COSKey 直接指向视频对象。
+	MediaKind   string         `json:"media_kind"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	TakenAt     sql.NullString `json:"taken_at"`
@@ -27,10 +35,12 @@ type Photo struct {
 }
 
 type PhotoInput struct {
-	TripID      string  `json:"trip_id"`
-	AlbumID     *string `json:"album_id"`
-	COSKey      string
-	VideoKey    *string `json:"video_key"`
+	TripID   string  `json:"trip_id"`
+	AlbumID  *string `json:"album_id"`
+	COSKey   string
+	VideoKey *string `json:"video_key"`
+	// MediaKind 为空时按照片写入，兼容既有调用方。
+	MediaKind   string  `json:"media_kind"`
 	Title       string  `json:"title"`
 	Description string  `json:"description"`
 	TakenAt     *string `json:"taken_at"`
@@ -53,11 +63,15 @@ func (s *Store) CreatePhoto(ctx context.Context, in PhotoInput) (string, error) 
 	if in.VideoKey != nil && *in.VideoKey != "" {
 		video = *in.VideoKey
 	}
+	kind := in.MediaKind
+	if kind == "" {
+		kind = MediaPhoto
+	}
 	id := photoRowID()
 	_, err := s.DB.ExecContext(ctx, `
-		INSERT INTO photos (id, trip_id, album_id, cos_key, thumbnail_key, video_key, title, description, taken_at, width, height, sort_order, created_at)
-		VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.TripID, album, in.COSKey, video, in.Title, in.Description, taken,
+		INSERT INTO photos (id, trip_id, album_id, cos_key, thumbnail_key, video_key, media_kind, title, description, taken_at, width, height, sort_order, created_at)
+		VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.TripID, album, in.COSKey, video, kind, in.Title, in.Description, taken,
 		nullInt(in.Width), nullInt(in.Height), 9999, nowUTC())
 	return id, err
 }
@@ -110,7 +124,7 @@ func (s *Store) UpdatePhotoMeta(ctx context.Context, id string, in PhotoInput, a
 
 func (s *Store) ListPhotosByTrip(ctx context.Context, tripID string) ([]Photo, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT id, trip_id, album_id, cos_key, thumbnail_key, video_key, title, description, taken_at, width, height, sort_order, created_at
+		SELECT id, trip_id, album_id, cos_key, thumbnail_key, video_key, media_kind, title, description, taken_at, width, height, sort_order, created_at
 		FROM photos WHERE trip_id = ? ORDER BY sort_order ASC, created_at ASC`, tripID)
 	if err != nil {
 		return nil, err
@@ -119,7 +133,7 @@ func (s *Store) ListPhotosByTrip(ctx context.Context, tripID string) ([]Photo, e
 	out := []Photo{}
 	for rows.Next() {
 		var p Photo
-		if err := rows.Scan(&p.ID, &p.TripID, &p.AlbumID, &p.COSKey, &p.ThumbnailKey, &p.VideoKey,
+		if err := rows.Scan(&p.ID, &p.TripID, &p.AlbumID, &p.COSKey, &p.ThumbnailKey, &p.VideoKey, &p.MediaKind,
 			&p.Title, &p.Description, &p.TakenAt, &p.Width, &p.Height, &p.SortOrder, &p.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -128,18 +142,18 @@ func (s *Store) ListPhotosByTrip(ctx context.Context, tripID string) ([]Photo, e
 	return out, rows.Err()
 }
 
-// GetPhotoKeys 查询单张照片的归属与对象 Key，供管理端封面校验与公开封面签名共用。
-func (s *Store) GetPhotoKeys(ctx context.Context, id string) (tripID, cosKey string, thumbKey sql.NullString, err error) {
+// GetPhotoKeys 查询单条媒体的归属、对象 Key 与类型，供管理端封面校验与公开封面签名共用。
+func (s *Store) GetPhotoKeys(ctx context.Context, id string) (tripID, cosKey string, thumbKey sql.NullString, mediaKind string, err error) {
 	err = s.DB.QueryRowContext(ctx,
-		`SELECT trip_id, cos_key, thumbnail_key FROM photos WHERE id = ?`, id).
-		Scan(&tripID, &cosKey, &thumbKey)
+		`SELECT trip_id, cos_key, thumbnail_key, media_kind FROM photos WHERE id = ?`, id).
+		Scan(&tripID, &cosKey, &thumbKey, &mediaKind)
 	if err == sql.ErrNoRows {
-		return "", "", sql.NullString{}, ErrNotFound
+		return "", "", sql.NullString{}, "", ErrNotFound
 	}
 	if err != nil {
-		return "", "", sql.NullString{}, err
+		return "", "", sql.NullString{}, "", err
 	}
-	return tripID, cosKey, thumbKey, nil
+	return tripID, cosKey, thumbKey, mediaKind, nil
 }
 
 // DeletePhoto 删除数据库关联并返回对象 Key（原图、缩略图、实况视频）供调用方补偿清理（计划 §4.1）。

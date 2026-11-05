@@ -20,10 +20,17 @@ const current = computed(() =>
 
 const loading = ref(false)
 const failed = ref(false)
+// 当前是否为独立视频（src 即视频地址）；单独收敛类型，模板里直接用非空字段。
+const videoCurrent = computed(() => {
+  const p = current.value
+  return p?.mediaKind === 'video' ? p : null
+})
 // 当前照片是否为实况（有视频地址）；单独收敛类型，模板里直接用非空字段。
 const liveCurrent = computed(() => {
   const p = current.value
-  return p?.videoSrc ? { id: p.id, src: p.src, videoSrc: p.videoSrc } : null
+  return p?.mediaKind !== 'video' && p?.videoSrc
+    ? { id: p.id, src: p.src, videoSrc: p.videoSrc }
+    : null
 })
 // 已预加载的 URL（相邻图各预取一次即可，切回来时走浏览器缓存）
 const prefetched = new Set<string>()
@@ -78,7 +85,8 @@ function prefetchNeighbors() {
   if (total < 2 || at === null) return
   for (const delta of [1, -1]) {
     const neighbor = props.photos[(at + delta + total) % total]
-    if (!neighbor?.src || prefetched.has(neighbor.src)) continue
+    // 视频体积远大于图片，不预取，切换时按需加载。
+    if (!neighbor?.src || neighbor.mediaKind === 'video' || prefetched.has(neighbor.src)) continue
     prefetched.add(neighbor.src)
     const img = new Image()
     img.decoding = 'async'
@@ -156,7 +164,19 @@ onBeforeUnmount(() => {
       </button>
       <div class="max-w-5xl w-full text-center">
         <div class="min-h-[45vh] flex flex-col items-center justify-center">
-          <div v-if="liveCurrent && !failed" class="w-full h-[78vh]">
+          <video
+            v-if="videoCurrent && !failed"
+            :key="videoCurrent.id ?? videoCurrent.src"
+            :src="videoCurrent.src"
+            controls
+            autoplay
+            muted
+            playsinline
+            class="max-h-[78vh] max-w-full mx-auto object-contain"
+            @loadeddata="onLoad"
+            @error="onError"
+          ></video>
+          <div v-else-if="liveCurrent && !failed" class="w-full h-[78vh]">
             <LivePhotoMedia
               :key="liveCurrent.id ?? liveCurrent.src"
               :photo-src="liveCurrent.src"
@@ -177,7 +197,7 @@ onBeforeUnmount(() => {
           />
           <p v-if="loading" class="text-white/55 text-xs tracking-widest mt-4">加载中…</p>
           <p v-else-if="failed" class="text-white/70 text-xs tracking-wider mt-4">
-            图片加载失败，刷新页面后再试一次。
+            内容加载失败，刷新页面后再试一次。
           </p>
         </div>
         <p v-if="current?.caption" class="text-white/75 text-xs tracking-wider mt-5">

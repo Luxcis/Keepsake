@@ -96,6 +96,9 @@ export interface Letter {
   updated_at: string
 }
 
+// 媒体条目类型：photo 为照片（可带实况视频），video 为单独上传的视频。
+export type MediaKind = 'photo' | 'video'
+
 export interface PhotoItem {
   id: string
   album_id?: string
@@ -105,11 +108,13 @@ export interface PhotoItem {
   width?: number | null
   height?: number | null
   sort_order: number
+  // 服务端返回的 media_kind；旧数据缺省时按照片处理。
+  media_kind?: MediaKind
   src?: string
   // 灯箱显示尺寸（长边 2400、不放大）；签名失败时为空，前端回退 src。
   preview_src?: string
   thumb_src?: string
-  // 实况照片的签名视频 URL；为空表示普通静态照片。
+  // 实况照片的视频地址或独立视频的播放地址；为空表示无视频。
   video_src?: string
 }
 
@@ -119,6 +124,8 @@ export interface LightboxPhoto {
   src: string
   // 实况照片的视频地址；存在时灯箱改用实况播放器。
   videoSrc?: string
+  // video 表示 src 是视频播放地址，灯箱使用原生视频播放器。
+  mediaKind?: MediaKind
   caption?: string
 }
 

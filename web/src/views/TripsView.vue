@@ -5,7 +5,7 @@ import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
 import { bindMotion } from '@/compositions/motion'
 
-// 旅行足迹（计划 §2）：旅行卡片列表；门禁降级；照片卡错落入场（数据到达后触发）。
+// 足迹（计划 §2）：旅行卡片列表；门禁降级；照片卡错落入场（数据到达后触发）。
 const trips = ref<Trip[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -56,7 +56,7 @@ onBeforeUnmount(() => ctx?.revert())
       <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
         <div>
           <p class="eyebrow mb-4">PLACES WE'VE BEEN</p>
-          <h1 class="section-title text-4xl md:text-5xl">我们的旅行足迹</h1>
+          <h1 class="section-title text-4xl md:text-5xl">我们的足迹</h1>
         </div>
         <p class="text-sm text-ink-soft leading-7 max-w-sm">
           每一次出发，都成为了我们故事的一部分。<br />

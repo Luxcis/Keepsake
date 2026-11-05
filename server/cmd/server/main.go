@@ -164,7 +164,8 @@ func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, er
 			Root:       cfg.StorageDir,
 			URLExpires: cfg.StorageURLExpires,
 			Secret:     cfg.StorageSecret,
-			MaxBytes:   config.MaxUploadBytes,
+			// 存储层放行到视频上限；图片的 30MB 由签名与确认阶段按类型校验。
+			MaxBytes: config.MaxMediaUploadBytes,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("init local storage: %w", err)
@@ -257,9 +258,9 @@ func run() error {
 	handler := server.New(cfg, st, cch, storageBackend, svc, log)
 	readTimeout, writeTimeout := 15*time.Second, 30*time.Second
 	if _, isLocal := storageBackend.(*localstore.Store); isLocal {
-		// 本地存储模式下照片经 /api/storage 直传：30MB 上传可能持续数分钟，
+		// 本地存储模式下媒体经 /api/storage 直传：400MB 视频在慢速上行下可能持续十余分钟，
 		// 读写超时必须覆盖整个请求；ReadHeaderTimeout 仍限制慢速头攻击。
-		readTimeout, writeTimeout = 5*time.Minute, 5*time.Minute
+		readTimeout, writeTimeout = 15*time.Minute, 15*time.Minute
 	}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

@@ -25,7 +25,7 @@ func liveDeps(t *testing.T) *deps {
 	ls, err := localstore.New(localstore.Options{
 		Root:     root,
 		Secret:   "live-photo-test-secret",
-		MaxBytes: config.MaxUploadBytes,
+		MaxBytes: config.MaxMediaUploadBytes,
 	})
 	if err != nil {
 		t.Fatalf("localstore: %v", err)
@@ -177,6 +177,9 @@ func TestPlainPhotoKeepsSingleObject(t *testing.T) {
 	photo, _ := photos[0].(map[string]any)
 	if src, _ := photo["video_src"].(string); src != "" {
 		t.Fatalf("plain photo video_src = %q, want empty", src)
+	}
+	if kind, _ := photo["media_kind"].(string); kind != "photo" {
+		t.Fatalf("plain photo media_kind = %q, want photo", kind)
 	}
 
 	d.do(t, "DELETE", "/api/admin/photos/"+photoID, "").expectStatus(t, http.StatusOK)
