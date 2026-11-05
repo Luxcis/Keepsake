@@ -220,13 +220,19 @@ func (h *Handlers) servePhotos(w http.ResponseWriter, r *http.Request, tripID st
 				slog.Warn("photo sign get failed", "key", p.COSKey, "err", serr)
 				src = ""
 			}
-			// 缩略图：优先独立对象，否则原图 URL 追加 COS 图片处理参数（查询参数不参与签名）。
+			// 缩略图：优先独立对象；否则把缩放处理参数签入原图 GET URL ——
+			// 处理参数必须参与签名，签名后追加会被 COS 校验拒绝（403）。
 			thumbSrc := ""
 			if p.ThumbnailKey.Valid {
 				thumbSrc, _ = h.cos.SignGET(p.ThumbnailKey.String)
 			}
 			if thumbSrc == "" && src != "" {
-				thumbSrc = src + "?imageMogr2/thumbnail/1400x"
+				t, terr := h.cos.SignGETThumb(p.COSKey)
+				if terr != nil {
+					slog.Warn("photo sign thumb failed", "key", p.COSKey, "err", terr)
+				} else {
+					thumbSrc = t
+				}
 			}
 			row["src"] = src
 			row["thumb_src"] = thumbSrc

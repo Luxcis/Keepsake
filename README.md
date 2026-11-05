@@ -134,7 +134,7 @@ docker compose down
         → 浏览器 XHR 直传 COS（PUT，进度条） → POST /api/admin/photos/confirm
         （服务端 HEAD 校验真实存在/大小/类型后才入库）
 删除：先删数据库关联 → cos_delete_tasks 表入队 → 后台 janitor 60s 轮询补偿删对象（404 幂等）
-展示：GET /api/trips/{id}/photos 输出短时效签名 URL；缩略图 = 原图 URL + imageMogr2 处理参数
+展示：GET /api/trips/{id}/photos 输出短时效签名 URL；缩略图 URL 签入 imageMogr2 处理参数（私有桶下签名后追加参数会被 COS 拒绝 403）
 ```
 
 启用前必须在腾讯云 COS 控制台完成（计划 §6.2 风险项）：

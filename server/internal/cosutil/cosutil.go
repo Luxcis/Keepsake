@@ -31,6 +31,8 @@ func (NoopBackend) SignPUT(_, _ string) (string, time.Time, error) {
 
 func (NoopBackend) SignGET(string) (string, error) { return "", ErrNotConfigured }
 
+func (NoopBackend) SignGETThumb(string) (string, error) { return "", ErrNotConfigured }
+
 func (NoopBackend) Head(string) (int64, string, error) { return 0, "", ErrNotConfigured }
 
 func (NoopBackend) Delete(string) error { return ErrNotConfigured }
@@ -40,8 +42,11 @@ type Backend interface {
 	Enabled() bool
 	// SignPUT 生成受限 PUT 预签名 URL（Content-Type 一并参与签名）。
 	SignPUT(key, contentType string) (uploadURL string, expireAt time.Time, err error)
-	// SignGET 生成短时效读取 URL（查询参数形式可追加 COS 图片处理指令）。
+	// SignGET 生成短时效读取 URL。
 	SignGET(key string) (string, error)
+	// SignGETThumb 生成签入 COS 缩放处理参数的缩略图 URL。
+	// 处理参数必须参与签名：私有读桶下签名后拼参数会被校验拒绝（403）。
+	SignGETThumb(key string) (string, error)
 	// Head 返回对象大小与 Content-Type；对象不存在返回 ErrObjectMissing。
 	Head(key string) (size int64, contentType string, err error)
 	// Delete 删除对象；对象不存在视为成功（幂等）。
@@ -69,15 +74,27 @@ func New(secretID, secretKey, region, bucket string, urlExpires time.Duration) *
 func (c *Client) Enabled() bool { return true }
 
 func (c *Client) SignPUT(key, contentType string) (string, time.Time, error) {
-	return c.presign(http.MethodPut, key, contentType)
+	return c.presign(http.MethodPut, key, contentType, nil)
 }
 
 func (c *Client) SignGET(key string) (string, error) {
-	signed, _, err := c.presign(http.MethodGet, key, "")
+	signed, _, err := c.presign(http.MethodGet, key, "", nil)
 	return signed, err
 }
 
-func (c *Client) presign(method, objectKey, contentType string) (string, time.Time, error) {
+// thumbOp：数据万象缩放指令（宽度 1400 等比缩放），整体作为参数 key、值为空参与签名。
+const thumbOp = "imageMogr2/thumbnail/1400x"
+
+// SignGETThumb 生成签入缩放处理参数的短时效缩略图 URL。
+// 私有读桶下处理参数必须在签名时携带；签名后再拼到 URL 上会被 COS 校验
+// 判为参数与签名不符（403 SignatureDoesNotMatch），不能在客户端追加。
+func (c *Client) SignGETThumb(key string) (string, error) {
+	q := url.Values{thumbOp: {""}}
+	signed, _, err := c.presign(http.MethodGet, key, "", &q)
+	return signed, err
+}
+
+func (c *Client) presign(method, objectKey, contentType string, query *url.Values) (string, time.Time, error) {
 	expireAt := time.Now().Add(c.expires)
 	opt := &cos.PresignedURLOptions{}
 	if contentType != "" {
@@ -85,6 +102,9 @@ func (c *Client) presign(method, objectKey, contentType string) (string, time.Ti
 		// 否则 403 —— 这也是确认阶段 HEAD 校验的依据。
 		h := http.Header{"Content-Type": []string{contentType}}
 		opt.Header = &h
+	}
+	if query != nil {
+		opt.Query = query
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
