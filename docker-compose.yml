@@ -7,7 +7,8 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      # 国内网络构建可换 CN 版: BUILD_DOCKERFILE=Dockerfile-cn docker compose build
+      dockerfile: ${BUILD_DOCKERFILE:-Dockerfile}
     ports:
       - "${WEB_PORT:-8000}:80"
     environment:

@@ -94,6 +94,8 @@ cp .env.example .env   # 按需修改（本地 http 联调保持 COOKIE_SECURE=f
 docker compose up --build -d
 # 启用 Redis（.env 放开 REDIS_ADDR=redis:6379 后）：
 docker compose --profile redis up --build -d
+# 国内网络构建（npm 走 npmmirror、Go 模块走 goproxy.cn；或在 .env 放开 BUILD_DOCKERFILE）：
+BUILD_DOCKERFILE=Dockerfile-cn docker compose build
 #   打开 http://localhost:8088 （Nginx → SPA + /api 反代 127.0.0.1:8080）
 curl http://localhost:8088/api/site/settings
 docker compose down
