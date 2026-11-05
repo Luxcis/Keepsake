@@ -7,16 +7,25 @@ import {
   type Trip,
   type UploadSignResponse,
 } from '@/api/client'
+import {
+  buildUploadPlans,
+  planBytes,
+  type LiveUploadPlan,
+  type MediaPart,
+  type PhotoUploadPlan,
+} from '@/lib/livePhoto'
 import PageState from '@/components/PageState.vue'
 
 // 相册与照片（计划 §4.3 + §2 管理行）：
-// 选择文件 → 签名 → 浏览器直传 COS（进度） → 确认入库 → 维护（说明/拍摄时间/排序/删除）。
+// 选择文件 → 实况识别/拆分 → 签名 → 浏览器直传（图片 + 视频） → 确认入库 → 维护说明/排序/删除。
 
 interface UploadJob {
   name: string
   pct: number
   done: boolean
+  kind: 'live' | 'photo' | 'skipped'
   failed?: string
+  warning?: string
 }
 
 const trips = ref<Trip[]>([])
@@ -70,12 +79,18 @@ async function onFilesChosen(ev: Event) {
     return
   }
   uploading.value = true
+  jobs.value = []
   try {
-    for (const file of files) {
-      const job: UploadJob = { name: file.name, pct: 0, done: false }
+    const plans = await buildUploadPlans(files)
+    for (const plan of plans) {
+      const job: UploadJob = { name: plan.name, pct: 0, done: false, kind: plan.kind }
       jobs.value.push(job)
+      if (plan.kind === 'skipped') {
+        job.failed = plan.reason
+        continue
+      }
       try {
-        await uploadOne(file, job)
+        job.warning = await uploadOne(plan, job)
         job.done = true
         job.pct = 100
       } catch (err) {
@@ -83,36 +98,64 @@ async function onFilesChosen(ev: Event) {
       }
     }
     await loadPhotos()
+  } catch (err) {
+    notice.value = err instanceof Error ? err.message : '解析所选文件失败'
   } finally {
     uploading.value = false
-    jobs.value = []
   }
 }
 
-async function uploadOne(file: File, job: UploadJob) {
-  const contentType = file.type || guessType(file.name)
+// uploadOne 上传一张照片（实况照片含视频）；视频失败时降级为普通照片并返回提示。
+async function uploadOne(
+  plan: PhotoUploadPlan | LiveUploadPlan,
+  job: UploadJob,
+): Promise<string | undefined> {
+  const total = planBytes(plan)
+  let uploaded = 0
+  const track = (size: number) => (pct: number) => {
+    const doneBytes = (size * pct) / 100
+    job.pct = total > 0 ? Math.min(99, Math.round(((uploaded + doneBytes) / total) * 100)) : 0
+  }
+
+  const photoKey = await uploadObject(plan.photo, track(plan.photo.blob.size))
+  uploaded += plan.photo.blob.size
+
+  if (plan.kind === 'photo') {
+    await confirmPhoto(plan.name, photoKey)
+    return undefined
+  }
+
+  let videoKey: string
+  try {
+    videoKey = await uploadObject(plan.video, track(plan.video.blob.size))
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : '上传失败'
+    // 图片已经上传成功，先保证照片入库，再提示实况视频失败。
+    await confirmPhoto(plan.name, photoKey)
+    return `实况视频上传失败，已按普通照片保存：${reason}`
+  }
+  uploaded += plan.video.blob.size
+  await confirmPhoto(plan.name, photoKey, videoKey)
+  return undefined
+}
+
+async function uploadObject(part: MediaPart, onProgress: (pct: number) => void): Promise<string> {
   const sign = await api.post<UploadSignResponse>('/api/admin/uploads/sign', {
     trip_id: tripId.value,
-    content_type: contentType,
-    size: file.size,
+    content_type: part.contentType,
+    size: part.blob.size,
   })
-  await putToCos(sign.upload_url, sign.content_type, file, (pct) => {
-    job.pct = pct
-  })
-  await api.post('/api/admin/photos/confirm', {
-    trip_id: tripId.value,
-    cos_key: sign.cos_key,
-    title: file.name.replace(/\.[^.]+$/, ''),
-  })
+  await putToCos(sign.upload_url, sign.content_type, part.blob, onProgress)
+  return sign.cos_key
 }
 
-function guessType(name: string): string {
-  const ext = (name.split('.').pop() ?? '').toLowerCase()
-  const map: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-    webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
-  }
-  return map[ext] ?? 'image/jpeg'
+async function confirmPhoto(name: string, cosKey: string, videoKey?: string) {
+  await api.post('/api/admin/photos/confirm', {
+    trip_id: tripId.value,
+    cos_key: cosKey,
+    ...(videoKey ? { video_key: videoKey } : {}),
+    title: name,
+  })
 }
 
 async function removePhoto(p: PhotoItem) {
@@ -186,10 +229,10 @@ onMounted(async () => {
         </label>
 
         <label class="ml-auto flex items-center gap-2 text-xs text-muted">
-          选择文件（可多选，单张 ≤30MB）
+          选择文件（可多选，单张 ≤30MB；照片 + 同名视频会自动识别为实况照片）
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime"
             multiple
             :disabled="uploading || !tripId"
             class="text-xs"
@@ -204,11 +247,23 @@ onMounted(async () => {
 
       <div v-if="jobs.length" class="space-y-2">
         <div v-for="j in jobs" :key="j.name" class="text-xs">
-          <div class="flex justify-between mb-1">
-            <span>{{ j.name }}</span>
-            <span :class="j.failed ? 'text-clay' : 'text-muted'">{{ j.failed ?? `${j.pct}%` }}</span>
+          <div class="flex justify-between mb-1 gap-3">
+            <span class="truncate">
+              <span
+                v-if="j.kind === 'live'"
+                class="mr-1 rounded-full bg-moss/15 px-1.5 py-0.5 text-[10px] text-moss"
+                >实况</span
+              >
+              {{ j.name }}
+            </span>
+            <span
+              class="shrink-0"
+              :class="j.failed || j.warning ? 'text-clay' : 'text-muted'"
+            >
+              {{ j.failed ?? j.warning ?? (j.done ? '完成' : `${j.pct}%`) }}
+            </span>
           </div>
-          <div class="h-1.5 bg-paper-deep rounded-full overflow-hidden">
+          <div v-if="j.kind !== 'skipped'" class="h-1.5 bg-paper-deep rounded-full overflow-hidden">
             <div class="h-full bg-moss transition-all" :style="{ width: `${j.pct}%` }"></div>
           </div>
         </div>
@@ -240,6 +295,11 @@ onMounted(async () => {
           <div v-else class="w-full h-full flex items-center justify-center text-[10px] text-muted">
             待 COS 配置后可见
           </div>
+          <span
+            v-if="p.video_src"
+            class="absolute top-2 left-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white"
+            >实况</span
+          >
         </div>
 
         <input

@@ -32,6 +32,12 @@ type deps struct {
 
 func newStack(t *testing.T) *deps {
 	t.Helper()
+	return newStackWithBackend(t, cosutil.NoopBackend{})
+}
+
+// newStackWithBackend 允许用真实本地存储后端跑完整直传链路（签名 → PUT → confirm）。
+func newStackWithBackend(t *testing.T, backend cosutil.Backend) *deps {
+	t.Helper()
 
 	ctx := context.Background()
 	st, err := store.Open(ctx, t.TempDir()+string(os.PathSeparator)+"test.db")
@@ -57,7 +63,7 @@ func newStack(t *testing.T) *deps {
 	}
 
 	cfg := config.Config{Env: "dev", Port: "0"}
-	ts := httptest.NewServer(server.New(cfg, st, cachex.New(nil), cosutil.NoopBackend{}, svc, log))
+	ts := httptest.NewServer(server.New(cfg, st, cachex.New(nil), backend, svc, log))
 	t.Cleanup(ts.Close)
 
 	jar, jerr := cookiejar.New(nil)

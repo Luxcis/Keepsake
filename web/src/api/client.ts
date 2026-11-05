@@ -118,12 +118,16 @@ export interface PhotoItem {
   // 灯箱显示尺寸（长边 2400、不放大）；签名失败时为空，前端回退 src。
   preview_src?: string
   thumb_src?: string
+  // 实况照片的签名视频 URL；为空表示普通静态照片。
+  video_src?: string
 }
 
 // 灯箱条目（与 PhotoLightbox 组件共享）。
 export interface LightboxPhoto {
   id?: string
   src: string
+  // 实况照片的视频地址；存在时灯箱改用实况播放器。
+  videoSrc?: string
   caption?: string
 }
 
