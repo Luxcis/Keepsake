@@ -6,7 +6,8 @@ export const routes = [
   { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: '首页' } },
   { path: '/trips', name: 'trips', component: () => import('@/views/TripsView.vue'), meta: { title: '旅行足迹' } },
   { path: '/trips/:id', name: 'trip-detail', component: () => import('@/views/TripDetailView.vue'), meta: { title: '旅行详情' } },
-  { path: '/photos', name: 'photos', component: () => import('@/views/PhotoWallView.vue'), meta: { title: '照片收藏' } },
+  // 照片收藏页已移除，照片改在旅行详情中浏览；旧链接重定向到旅行足迹。
+  { path: '/photos', redirect: { name: 'trips' } },
   { path: '/timeline', name: 'timeline', component: () => import('@/views/TimelineView.vue'), meta: { title: '时光轴' } },
   { path: '/letter', name: 'letter', component: () => import('@/views/LetterView.vue'), meta: { title: '生日信' } },
   { path: '/admin/login', name: 'admin-login', component: () => import('@/views/admin/AdminLoginView.vue'), meta: { title: '管理员登录', plain: true } },

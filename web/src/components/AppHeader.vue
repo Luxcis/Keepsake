@@ -21,7 +21,6 @@
 
       <nav class="hidden md:flex items-center gap-8 text-xs tracking-wide" aria-label="主导航">
         <RouterLink class="nav-link" to="/trips">旅行足迹</RouterLink>
-        <RouterLink class="nav-link" to="/photos">照片收藏</RouterLink>
         <RouterLink class="nav-link" to="/timeline">时光轴</RouterLink>
         <RouterLink class="nav-link" to="/letter">生日信</RouterLink>
       </nav>
@@ -37,7 +36,6 @@
     <nav class="md:hidden flex justify-around pb-3 text-xs" aria-label="移动端导航">
       <RouterLink class="nav-link" to="/">首页</RouterLink>
       <RouterLink class="nav-link" to="/trips">足迹</RouterLink>
-      <RouterLink class="nav-link" to="/photos">照片</RouterLink>
       <RouterLink class="nav-link" to="/timeline">时光轴</RouterLink>
       <RouterLink class="nav-link" to="/letter">生日信</RouterLink>
     </nav>
