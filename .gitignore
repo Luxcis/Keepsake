@@ -27,6 +27,7 @@
 # 构建产物
 node_modules/
 dist/
+server/server
 
 # 运行数据与数据库（SQLite WAL 会产生 -wal/-shm 伴生文件）
 data/*

@@ -1,31 +1,25 @@
-# 计划 §5.2 服务拓扑：
-#   web    —— Nginx：提供 Vue dist，/api 反代 api，对外发布端口
-#   api    —— Go API：SQLite(持久化卷) / Redis / COS
-#   redis  —— 缓存与会话：内部网络，不发布端口
-name: keepsake
-
+# 拓扑（统一镜像版）：
+#   app    —— 单镜像：Nginx(80, SPA + /api 反代到容器内 127.0.0.1:8080) + Go API(8080, SQLite)
+#   redis  —— 可选（profiles: ["redis"]）：.env 配置 REDIS_ADDR 并以
+#             `docker compose --profile redis up -d` 启动才生效；
+#             未启用时会话/限流退化为进程内存（单实例部署可接受，重启后需重新登录）。
 services:
-  web:
-    build: ./web
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "${WEB_PORT:-8000}:80"
-    volumes:
-      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - api
-    restart: unless-stopped
-
-  api:
-    build: ./server
     environment:
       APP_ENV: ${APP_ENV:-production}
       API_PORT: "8080"
       DATA_DIR: /data
       DB_FILE: ${DB_FILE:-journey.db}
-      REDIS_ADDR: redis:6379
+      # Redis 可选：留空即不启用（内存会话/限流）；启用场景见上方 redis 服务注释
+      REDIS_ADDR: ${REDIS_ADDR:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      # 管理员自动引导：.env 配置 ADMIN_USERNAME/ADMIN_PASSWORD 后，api 启动即首次引导；
-      # 同名已存在则跳过（不重置密码）。全部留空则不进入容器，也不做引导。
+      # 管理员自动引导：.env 配置 ADMIN_USERNAME/ADMIN_PASSWORD 后，app 启动即首次引导；
+      # 同名已存在则跳过（不重置密码）。全部留空则不进容器，也不做引导。
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_SITE_PASSWORD: ${ADMIN_SITE_PASSWORD:-}
@@ -37,8 +31,7 @@ services:
       # CORS_ORIGINS 为空即禁用（生产同源；开发走 vite proxy）
     volumes:
       - ./data:/data
-    depends_on:
-      - redis
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
@@ -49,6 +42,7 @@ services:
 
   redis:
     image: redis:8-alpine
+    profiles: ["redis"] # 不以 --profile redis 启动时本服务完全不创建
     command: ["redis-server", "--appendonly", "yes"]  # AOF 开启，重启不丢会话/缓存（验收 §6.1）
     volumes:
       - ./data:/data

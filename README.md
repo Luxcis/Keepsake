@@ -13,7 +13,7 @@
 | 后端 | Go 1.26 + chi（路由）+ `modernc.org/sqlite`（纯 Go 驱动）|
 | 缓存/会话 | Redis 8（go-redis/v9），可缺失运行（降级模式）|
 | 对象存储 | 腾讯 COS（COS 链路阶段接入，Bucket 私有 + 短时效签名 URL） |
-| 部署 | Docker Compose：web(Nginx) + api(Go) + redis |
+| 部署 | Docker Compose：单镜像 app（Nginx + Go API 同容器, dist + 反代 127.0.0.1:8080）+ 可选 redis（profiles） |
 
 ## 目录结构
 
@@ -28,9 +28,12 @@
 │  ├─ internal/handlers/     JSON 接口（统一 envelope / 501 占位策略）
 │  ├─ internal/cachex/       Redis 封装（探活语义）
 │  └─ internal/server/       chi 路由与中间件（slog 日志 / CORS / Recoverer）
+├─ Dockerfile        统一镜像（三阶段：Vue dist + Go server + Nginx 运行时）
 ├─ web/              Vue 3 SPA（页面路由即计划 §2 的七大页面）
-├─ deploy/nginx/     Nginx 站点配置（dist + /api 反代）
-├─ data/             SQLite 持久化目录（挂载进 api 容器，勿放共享盘）
+├─ deploy/
+│  ├─ nginx/         Nginx 站点配置（dist + /api 反代 127.0.0.1:8080）
+│  └─ entrypoint.sh  统一镜像入口（uid 10001 起 Go API，PID1 交给 Nginx）
+├─ data/             SQLite 持久化目录（挂载进 app 容器，勿放共享盘）
 └─ docker-compose.yml
 ```
 
@@ -68,7 +71,7 @@ cd server && DATA_DIR=$PWD/data \
 
 # 或在容器运行中引导：
 docker compose exec -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='***' -e ADMIN_SITE_PASSWORD='***' \
-  api /usr/local/bin/server -create-admin
+  app /usr/local/bin/server -create-admin
 ```
 
 - `ADMIN_SITE_PASSWORD` 未设置时，门禁处于“开放模式”，`/api/site/settings` 中 `gate_enabled: false`，日志有明确告警；随时可通过 `PUT /api/admin/site/settings {"site_password":"..."}` 启用。
@@ -76,7 +79,7 @@ docker compose exec -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='***' -e ADMIN_SIT
 
 ### Docker 自动引导
 
-在 `.env` 填好 `ADMIN_USERNAME`/`ADMIN_PASSWORD`（可选 `ADMIN_SITE_PASSWORD`）后，`docker compose up -d` 时 api 启动会自动创建首个管理员，无需手动执行引导命令：
+在 `.env` 填好 `ADMIN_USERNAME`/`ADMIN_PASSWORD`（可选 `ADMIN_SITE_PASSWORD`）后，`docker compose up -d` 时 app 容器启动会自动创建首个管理员，无需手动执行引导命令：
 
 - 仅当该用户名**不存在**时创建；同名已存在则跳过日志提示，**不重置密码**（重启容器不会覆盖现有账号）。
 - 变量只填其一会在日志告警并跳过；全部留空则行为与之前完全一致。
@@ -87,13 +90,16 @@ docker compose exec -e ADMIN_USERNAME=admin -e ADMIN_PASSWORD='***' -e ADMIN_SIT
 
 ```bash
 cp .env.example .env   # 按需修改（本地 http 联调保持 COOKIE_SECURE=false）
-docker compose up --build -d   # 构建并启动 web/api/redis
-#   打开 http://localhost:8088 （Nginx → SPA + /api 反代）
+# 不启用 Redis（默认，仅 app 一个服务）：
+docker compose up --build -d
+# 启用 Redis（.env 放开 REDIS_ADDR=redis:6379 后）：
+docker compose --profile redis up --build -d
+#   打开 http://localhost:8088 （Nginx → SPA + /api 反代 127.0.0.1:8080）
 curl http://localhost:8088/api/site/settings
 docker compose down
 ```
 
-> Linux 服务器上如遇 SQLite 写入权限问题：`sudo chown -R 10001 ./data`（容器内以 uid 10001 运行）。
+> Linux 服务器上如遇 SQLite 写入权限问题：`sudo chown -R 10001 ./data`（容器内 API 以 uid 10001 运行）。
 
 ## 已实现接口（后端基础阶段，11/05–11/08）
 
@@ -116,7 +122,7 @@ docker compose down
 ### 安全语义（计划 §3.2 / §5.1）
 
 - **失败关闭**：`REDIS_ADDR` 已配置但不可达时，登录/解锁/管理端会话读取返回 `503 backend_unavailable`，不放行。
-- **降级模式**：未配置 Redis 时使用进程内存会话与限速（仅限开发；生产必须在 `.env` 配 `REDIS_ADDR`）。
+- **可选降级**：未配置 Redis 时使用进程内存会话与限速（本站为单实例部署的合法形态；容器重启后需重新登录，且限速计数清零。多实例部署才必须启用 Redis）。
 - **CSRF**：SameSite=Lax Cookie + “不安全方法携带 Origin/Referer 时必须同源（感知 X-Forwarded-Proto）”双层防护。
 
 ## 照片上传链路（COS，11/13–15 阶段）
@@ -135,7 +141,7 @@ docker compose down
 2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`，最大 25MB。
 3. 建议开启 COS 版本控制/生命周期策略（照片不可再生，备份 §5.3）。
 
-之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build api`，照片上传立刻可用；未配置时上传接口返回语义化的 `503 cos_not_configured`。
+之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用；未配置时上传接口返回语义化的 `503 cos_not_configured`。
 
 ## 阶段路线（→ 计划 §6 排期）
 
@@ -154,4 +160,4 @@ docker compose down
 - SQLite 开启 WAL + busy_timeout，连接池保守；备份使用 Online Backup API / `.backup`，勿复制裸 `.db`。
 - 对象 Key 服务端生成；COS SecretId/Key 严禁出服务端；签名 URL 短时效。
 - 日志（slog JSON）不记录密码、Cookie、签名 URL。
-- 当前脚手架运行在**降级模式**检查点见 `/healthz`：`redis: disabled|unreachable` 为预期内。
+- 当前脚手架运行在可选 Redis 形态，检查点见 `/healthz`：`redis: disabled`=未启用（预期内）、`unreachable`=已配置但连不上（此时认证写入失败关闭）。

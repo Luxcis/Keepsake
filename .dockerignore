@@ -1,0 +1,17 @@
+# 根级构建上下文排除（统一镜像 build.context = . 专用）
+.git/
+.zcode/
+.comet/
+.codegraph/
+data/
+docs/
+node_modules/
+**/node_modules/
+web/dist/
+server/server
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example

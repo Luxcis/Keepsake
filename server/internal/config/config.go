@@ -18,8 +18,8 @@ type Config struct {
 	DataDir string
 	// DBFile: SQLite 数据库文件名。
 	DBFile string
-	// RedisAddr: 为空表示不启用 Redis（开发态允许，会话退化为进程内存）；
-	// 计划 §3.2：Redis 不可用时认证与管理写入应失败关闭。
+	// RedisAddr: 为空表示不启用 Redis（合法部署形态，会话/限流退化为进程内存；
+	// 多实例部署需启用）。计划 §3.2：已配置但不可用时认证与管理写入应失败关闭。
 	RedisAddr string
 	// CookieSecure: 会话 Cookie 的 Secure 位。默认不启用；生产 HTTPS 网关下显式开启。
 	// 本地 HTTP 联调（如 compose 无 TLS）保持 false。

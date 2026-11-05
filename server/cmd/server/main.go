@@ -163,7 +163,7 @@ func run() error {
 	}
 	log.Info("sqlite ready", "path", cfg.DBPath(), "applied", applied)
 
-	// --- Redis（可选依赖；缺失 → 内存会话降级，仅开发） ---
+	// --- Redis（可选依赖；未配置 → 内存会话/限流降级，属合法部署形态，见启动日志） ---
 	var rdb *redis.Client
 	if cfg.RedisAddr != "" {
 		rdb = redis.NewClient(&redis.Options{
@@ -188,7 +188,8 @@ func run() error {
 	} else {
 		sessions = auth.NewMemorySessionStore()
 		if cfg.IsProd() {
-			log.Error("REDIS_ADDR not configured in production: sessions are in-memory only")
+			// Redis 已是可选依赖（单实例部署可走内存会话）：记录告警即可，非错误。
+			log.Warn("redis not configured: sessions/rate-limit are in-process (lost on restart)")
 		}
 	}
 	limiter := auth.NewLimiter(rdb)
