@@ -14,11 +14,12 @@ import (
 	"keepsake/internal/config"
 	"keepsake/internal/cosutil"
 	"keepsake/internal/handlers"
+	"keepsake/internal/localstore"
 	"keepsake/internal/store"
 )
 
 // New 返回装配好中间件与路由的 http.Handler。
-func New(cfg config.Config, st *store.Store, cch *cachex.Cache, cos cosutil.Backend, svc *auth.Service, log *slog.Logger) http.Handler {
+func New(cfg config.Config, st *store.Store, cch *cachex.Cache, backend cosutil.Backend, svc *auth.Service, log *slog.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	// 请求上下文：RequestID → RealIP → 结构化日志 → Panic 恢复。
@@ -28,7 +29,7 @@ func New(cfg config.Config, st *store.Store, cch *cachex.Cache, cos cosutil.Back
 		r.Use(cors(cfg.CORSOrigins))
 	}
 
-	h := handlers.New(st, cch, svc, cos, log)
+	h := handlers.New(st, cch, svc, backend, log)
 
 	// 健康检查独立于 /api，便于容器/Nginx 直接探测。
 	r.Get("/healthz", h.Health)
@@ -41,8 +42,15 @@ func New(cfg config.Config, st *store.Store, cch *cachex.Cache, cos cosutil.Back
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		r.Use(csrfSameOrigin)
-		h.Mount(r)
+		// 本地存储的直传/读取端点：URL 自带 HMAC 能力签名且不依赖 Cookie，
+		// 与 COS 预签名 URL 同语义，因此不经过 CSRF 与内容门禁。
+		if ls, ok := backend.(*localstore.Store); ok {
+			r.Mount("/storage", ls.Router())
+		}
+		r.Group(func(r chi.Router) {
+			r.Use(csrfSameOrigin)
+			h.Mount(r)
+		})
 	})
 	return r
 }

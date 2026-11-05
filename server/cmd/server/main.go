@@ -26,6 +26,7 @@ import (
 	"keepsake/internal/config"
 	"keepsake/internal/cosutil"
 	"keepsake/internal/janitor"
+	"keepsake/internal/localstore"
 	"keepsake/internal/server"
 	"keepsake/internal/store"
 )
@@ -141,6 +142,51 @@ func bootstrapAdmin(ctx context.Context, cfg config.Config, st *store.Store, svc
 
 // ---------- 常驻服务 ----------
 
+// newStorageBackend 按 STORAGE_DRIVER 选择存储后端。
+// 留空自动选择：COS 四项齐全 → COS；否则开发环境 → 本地磁盘；生产环境 → 禁用上传。
+// 显式 local 也可用于单机生产部署（STORAGE_DIR 必须位于持久卷上）。
+func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, error) {
+	driver := cfg.StorageDriver
+	if driver == "" {
+		switch {
+		case cfg.COSConfigured():
+			driver = "cos"
+		case !cfg.IsProd():
+			driver = "local"
+		default:
+			driver = "none"
+		}
+	}
+
+	switch driver {
+	case "local":
+		ls, err := localstore.New(localstore.Options{
+			Root:       cfg.StorageDir,
+			URLExpires: cfg.StorageURLExpires,
+			Secret:     cfg.StorageSecret,
+			MaxBytes:   config.MaxUploadBytes,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("init local storage: %w", err)
+		}
+		log.Info("storage enabled", "driver", "local", "root", cfg.StorageDir,
+			"url_expires", cfg.StorageURLExpires)
+		return ls, nil
+	case "cos":
+		if !cfg.COSConfigured() {
+			return nil, errors.New("STORAGE_DRIVER=cos requires COS_SECRET_ID/COS_SECRET_KEY/COS_REGION/COS_BUCKET")
+		}
+		log.Info("storage enabled", "driver", "cos", "bucket", cfg.COSBucket,
+			"region", cfg.COSRegion, "url_expires", cfg.COSURLExpires)
+		return cosutil.New(cfg.COSSecretID, cfg.COSSecretKey, cfg.COSRegion, cfg.COSBucket, cfg.COSURLExpires), nil
+	case "none":
+		log.Warn("storage not configured: photo upload disabled (503); set STORAGE_DRIVER=local to use local disk")
+		return cosutil.NoopBackend{}, nil
+	default:
+		return nil, fmt.Errorf("unknown STORAGE_DRIVER %q (want local or cos)", driver)
+	}
+}
+
 func run() error {
 	cfg := config.Load()
 
@@ -199,26 +245,28 @@ func run() error {
 	// --- 管理员自动引导：.env/compose 配置 ADMIN_* 即随启动创建首个管理员（幂等，见 bootstrapAdmin） ---
 	bootstrapAdmin(ctx, cfg, st, svc, log)
 
-	// --- COS（可选依赖；未配置 → NoopBackend，上传接口返回明确的 config_missing） ---
-	var cosBackend cosutil.Backend
-	if cfg.COSSecretID != "" && cfg.COSSecretKey != "" && cfg.COSRegion != "" && cfg.COSBucket != "" {
-		cosBackend = cosutil.New(cfg.COSSecretID, cfg.COSSecretKey, cfg.COSRegion, cfg.COSBucket, cfg.COSURLExpires)
-		log.Info("cos enabled", "bucket", cfg.COSBucket, "region", cfg.COSRegion, "url_expires", cfg.COSURLExpires)
-	} else {
-		cosBackend = cosutil.NoopBackend{}
-		log.Warn("cos not configured: photo upload disabled (503 config_missing)")
+	// --- 存储后端（local / COS；未配置 → NoopBackend，上传接口返回明确的 503） ---
+	storageBackend, err := newStorageBackend(cfg, log)
+	if err != nil {
+		return err
 	}
 
 	// --- 删除补偿后台（计划 §4.1：对象清理失败可重试） ---
-	go func() { janitor.New(st, cosBackend).Run(ctx) }()
+	go func() { janitor.New(st, storageBackend).Run(ctx) }()
 
-	handler := server.New(cfg, st, cch, cosBackend, svc, log)
+	handler := server.New(cfg, st, cch, storageBackend, svc, log)
+	readTimeout, writeTimeout := 15*time.Second, 30*time.Second
+	if _, isLocal := storageBackend.(*localstore.Store); isLocal {
+		// 本地存储模式下照片经 /api/storage 直传：30MB 上传可能持续数分钟，
+		// 读写超时必须覆盖整个请求；ReadHeaderTimeout 仍限制慢速头攻击。
+		readTimeout, writeTimeout = 5*time.Minute, 5*time.Minute
+	}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second, // API 只承载 JSON；大文件走 COS 直传（计划 §3.1）
-		WriteTimeout:      30 * time.Second,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
 		IdleTimeout:       90 * time.Second,
 	}
 
