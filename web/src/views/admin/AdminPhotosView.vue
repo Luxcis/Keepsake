@@ -186,7 +186,7 @@ onMounted(async () => {
         </label>
 
         <label class="ml-auto flex items-center gap-2 text-xs text-muted">
-          选择文件（可多选，单张 ≤25MB）
+          选择文件（可多选，单张 ≤30MB）
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp,image/heic,image/heif"

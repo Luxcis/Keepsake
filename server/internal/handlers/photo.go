@@ -26,7 +26,7 @@ var allowedImageTypes = map[string]string{
 	"image/heif": "heif",
 }
 
-const maxUploadBytes = 25 << 20 // 25MB：与 plan 上传链路对齐（直传不经 Nginx）
+const maxUploadBytes = 30 << 20 // 30MB：与 plan 上传链路对齐（直传不经 Nginx）
 
 // cosErrToHTTP：COS 层错误 → 统一 HTTP 语义。
 // cos_not_configured 单独成码：管理员需要一眼看出“是环境没配密钥”，而非服务故障。

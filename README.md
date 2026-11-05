@@ -142,7 +142,7 @@ docker compose down
 启用前必须在腾讯云 COS 控制台完成（计划 §6.2 风险项）：
 
 1. Bucket 权限设为**私有**（只允许本服务密钥与预签名访问）。
-2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`，最大 25MB。
+2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`，最大 30MB。
 3. 建议开启 COS 版本控制/生命周期策略（照片不可再生，备份 §5.3）。
 
 之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用；未配置时上传接口返回语义化的 `503 cos_not_configured`。
