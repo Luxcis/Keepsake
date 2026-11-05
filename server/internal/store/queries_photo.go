@@ -15,19 +15,22 @@ type Photo struct {
 	AlbumID      sql.NullString `json:"album_id"`
 	COSKey       string         `json:"cos_key"`
 	ThumbnailKey sql.NullString `json:"thumbnail_key"`
-	Title        string         `json:"title"`
-	Description  string         `json:"description"`
-	TakenAt      sql.NullString `json:"taken_at"`
-	Width        sql.NullInt64  `json:"width"`
-	Height       sql.NullInt64  `json:"height"`
-	SortOrder    int            `json:"sort_order"`
-	CreatedAt    string         `json:"created_at"`
+	// VideoKey 为实况照片的视频对象 Key；NULL 表示普通静态照片。
+	VideoKey    sql.NullString `json:"video_key"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	TakenAt     sql.NullString `json:"taken_at"`
+	Width       sql.NullInt64  `json:"width"`
+	Height      sql.NullInt64  `json:"height"`
+	SortOrder   int            `json:"sort_order"`
+	CreatedAt   string         `json:"created_at"`
 }
 
 type PhotoInput struct {
 	TripID      string  `json:"trip_id"`
 	AlbumID     *string `json:"album_id"`
 	COSKey      string
+	VideoKey    *string `json:"video_key"`
 	Title       string  `json:"title"`
 	Description string  `json:"description"`
 	TakenAt     *string `json:"taken_at"`
@@ -46,11 +49,15 @@ func (s *Store) CreatePhoto(ctx context.Context, in PhotoInput) (string, error) 
 	if in.TakenAt != nil && *in.TakenAt != "" {
 		taken = *in.TakenAt
 	}
+	var video any
+	if in.VideoKey != nil && *in.VideoKey != "" {
+		video = *in.VideoKey
+	}
 	id := photoRowID()
 	_, err := s.DB.ExecContext(ctx, `
-		INSERT INTO photos (id, trip_id, album_id, cos_key, thumbnail_key, title, description, taken_at, width, height, sort_order, created_at)
-		VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
-		id, in.TripID, album, in.COSKey, in.Title, in.Description, taken,
+		INSERT INTO photos (id, trip_id, album_id, cos_key, thumbnail_key, video_key, title, description, taken_at, width, height, sort_order, created_at)
+		VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, in.TripID, album, in.COSKey, video, in.Title, in.Description, taken,
 		nullInt(in.Width), nullInt(in.Height), 9999, nowUTC())
 	return id, err
 }
@@ -103,7 +110,7 @@ func (s *Store) UpdatePhotoMeta(ctx context.Context, id string, in PhotoInput, a
 
 func (s *Store) ListPhotosByTrip(ctx context.Context, tripID string) ([]Photo, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT id, trip_id, album_id, cos_key, thumbnail_key, title, description, taken_at, width, height, sort_order, created_at
+		SELECT id, trip_id, album_id, cos_key, thumbnail_key, video_key, title, description, taken_at, width, height, sort_order, created_at
 		FROM photos WHERE trip_id = ? ORDER BY sort_order ASC, created_at ASC`, tripID)
 	if err != nil {
 		return nil, err
@@ -112,7 +119,7 @@ func (s *Store) ListPhotosByTrip(ctx context.Context, tripID string) ([]Photo, e
 	out := []Photo{}
 	for rows.Next() {
 		var p Photo
-		if err := rows.Scan(&p.ID, &p.TripID, &p.AlbumID, &p.COSKey, &p.ThumbnailKey,
+		if err := rows.Scan(&p.ID, &p.TripID, &p.AlbumID, &p.COSKey, &p.ThumbnailKey, &p.VideoKey,
 			&p.Title, &p.Description, &p.TakenAt, &p.Width, &p.Height, &p.SortOrder, &p.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -135,26 +142,26 @@ func (s *Store) GetPhotoKeys(ctx context.Context, id string) (tripID, cosKey str
 	return tripID, cosKey, thumbKey, nil
 }
 
-// DeletePhoto 删除数据库关联并返回 COS Key（原图+缩略图）供调用方补偿清理（计划 §4.1）。
+// DeletePhoto 删除数据库关联并返回对象 Key（原图、缩略图、实况视频）供调用方补偿清理（计划 §4.1）。
 // cover_photo_id 无外键（与 photos 循环引用），删除照片时在此归空相关旅行封面。
-func (s *Store) DeletePhoto(ctx context.Context, id string) (cosKey, thumbKey string, err error) {
-	var thumb sql.NullString
-	err = s.DB.QueryRowContext(ctx, `SELECT cos_key, thumbnail_key FROM photos WHERE id = ?`, id).
-		Scan(&cosKey, &thumb)
+func (s *Store) DeletePhoto(ctx context.Context, id string) (cosKey, thumbKey, videoKey string, err error) {
+	var thumb, video sql.NullString
+	err = s.DB.QueryRowContext(ctx, `SELECT cos_key, thumbnail_key, video_key FROM photos WHERE id = ?`, id).
+		Scan(&cosKey, &thumb, &video)
 	if err == sql.ErrNoRows {
-		return "", "", ErrNotFound
+		return "", "", "", ErrNotFound
 	}
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if _, err := s.DB.ExecContext(ctx, `DELETE FROM photos WHERE id = ?`, id); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if _, err := s.DB.ExecContext(ctx,
 		`UPDATE trips SET cover_photo_id = NULL WHERE cover_photo_id = ?`, id); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return cosKey, thumb.String, nil
+	return cosKey, thumb.String, video.String, nil
 }
 
 // GetPhoto 校验存在性（确认阶段避免重复 Key：由 UNIQUE 约束兜底）。

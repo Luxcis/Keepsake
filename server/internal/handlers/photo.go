@@ -27,6 +27,22 @@ var allowedImageTypes = map[string]string{
 	"image/heif": "heif",
 }
 
+// allowedVideoTypes：实况照片视频对象白名单 → 扩展名。
+// mp4 覆盖 Android 动态照片与内嵌 MP4；quicktime 覆盖 iOS 实况照片导出的 .MOV。
+var allowedVideoTypes = map[string]string{
+	"video/mp4":       "mp4",
+	"video/quicktime": "mov",
+}
+
+// uploadExt 合并图片与视频白名单，返回 Key 生成用的扩展名。
+func uploadExt(contentType string) (string, bool) {
+	if ext, ok := allowedImageTypes[contentType]; ok {
+		return ext, true
+	}
+	ext, ok := allowedVideoTypes[contentType]
+	return ext, ok
+}
+
 const maxUploadBytes = config.MaxUploadBytes // 30MB：签名接口、确认阶段与本地存储写入共用
 
 // cosErrToHTTP：存储层错误 → 统一 HTTP 语义（本地存储与 COS 共用）。
@@ -60,8 +76,9 @@ func (h *Handlers) signUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.ContentType = strings.ToLower(strings.TrimSpace(in.ContentType))
-	if _, ok := allowedImageTypes[in.ContentType]; !ok {
-		err(w, http.StatusBadRequest, "bad_request", "仅支持 jpeg/png/webp/heic/heif")
+	ext, ok := uploadExt(in.ContentType)
+	if !ok {
+		err(w, http.StatusBadRequest, "bad_request", "仅支持 jpeg/png/webp/heic/heif 与实况视频 mp4/mov")
 		return
 	}
 	if in.Size <= 0 || in.Size > maxUploadBytes {
@@ -70,7 +87,7 @@ func (h *Handlers) signUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := uploadKey(in.TripID, allowedImageTypes[in.ContentType])
+	key := uploadKey(in.TripID, ext)
 	uploadURL, expireAt, serr := h.cos.SignPUT(key, in.ContentType)
 	if serr != nil {
 		cosErrToHTTP(w, serr)
@@ -102,6 +119,7 @@ func (h *Handlers) confirmPhoto(w http.ResponseWriter, r *http.Request) {
 		TripID      string  `json:"trip_id"`
 		AlbumID     *string `json:"album_id"`
 		COSKey      string  `json:"cos_key"`
+		VideoKey    string  `json:"video_key"`
 		Title       string  `json:"title"`
 		Description string  `json:"description"`
 		TakenAt     *string `json:"taken_at"`
@@ -140,6 +158,33 @@ func (h *Handlers) confirmPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 实况视频（可选）：与图片同属当前旅行前缀，且必须是白名单内的视频对象。
+	var videoKey *string
+	if vk := strings.TrimSpace(in.VideoKey); vk != "" {
+		if len(vk) > 255 {
+			err(w, http.StatusBadRequest, "bad_request", "video_key 过长")
+			return
+		}
+		if !strings.HasPrefix(vk, "trips/"+in.TripID+"/") {
+			err(w, http.StatusBadRequest, "bad_request", "video_key 与旅行不匹配")
+			return
+		}
+		vsize, vctype, vherr := h.cos.Head(vk)
+		if vherr != nil {
+			cosErrToHTTP(w, vherr)
+			return
+		}
+		if vsize <= 0 || vsize > maxUploadBytes {
+			err(w, http.StatusBadRequest, "bad_request", "实况视频大小超出限制")
+			return
+		}
+		if allowedVideoTypes[strings.ToLower(baseCT(vctype))] == "" {
+			err(w, http.StatusBadRequest, "bad_request", "实况视频类型不在白名单内: "+vctype)
+			return
+		}
+		videoKey = &vk
+	}
+
 	in.Title = strings.TrimSpace(in.Title)
 	if len(in.Title) > 200 {
 		err(w, http.StatusBadRequest, "bad_request", "title 过长")
@@ -151,7 +196,7 @@ func (h *Handlers) confirmPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id, cerr := h.st.CreatePhoto(r.Context(), store.PhotoInput{
-		TripID: in.TripID, AlbumID: in.AlbumID, COSKey: in.COSKey,
+		TripID: in.TripID, AlbumID: in.AlbumID, COSKey: in.COSKey, VideoKey: videoKey,
 		Title: in.Title, Description: in.Description, TakenAt: in.TakenAt,
 		Width: in.Width, Height: in.Height,
 	})
@@ -232,10 +277,12 @@ func (h *Handlers) servePhotos(w http.ResponseWriter, r *http.Request, tripID st
 			row["src"] = src
 			row["preview_src"] = previewSrc
 			row["thumb_src"] = thumbSrc
+			row["video_src"] = h.signVideo(p.VideoKey)
 		} else {
 			row["src"] = ""
 			row["preview_src"] = ""
 			row["thumb_src"] = ""
+			row["video_src"] = ""
 		}
 		out = append(out, row)
 	}
@@ -273,6 +320,20 @@ func (h *Handlers) signPreview(cosKey string) string {
 	u, err := h.cos.SignGETPreview(cosKey)
 	if err != nil {
 		slog.Warn("photo sign preview failed", "key", cosKey, "err", err)
+		return ""
+	}
+	return u
+}
+
+// signVideo 签名实况视频 URL；无视频或签名失败时返回空串。
+// 前端以 video_src 是否存在判定实况照片，空串即普通静态照片。
+func (h *Handlers) signVideo(videoKey sql.NullString) string {
+	if !h.cos.Enabled() || !videoKey.Valid || videoKey.String == "" {
+		return ""
+	}
+	u, err := h.cos.SignGET(videoKey.String)
+	if err != nil {
+		slog.Warn("photo sign video failed", "key", videoKey.String, "err", err)
 		return ""
 	}
 	return u
@@ -356,14 +417,14 @@ func (h *Handlers) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 	Data(w, http.StatusOK, map[string]any{"reordered": true})
 }
 
-// DELETE /api/admin/photos/{id} —— 先删数据库关联，再入队补偿删除 COS 对象（计划 §4.1）。
+// DELETE /api/admin/photos/{id} —— 先删数据库关联，再入队补偿删除视频/缩略图/原图对象（计划 §4.1）。
 func (h *Handlers) deletePhoto(w http.ResponseWriter, r *http.Request) {
-	cosKey, thumbKey, derr := h.st.DeletePhoto(r.Context(), chi.URLParam(r, "id"))
+	cosKey, thumbKey, videoKey, derr := h.st.DeletePhoto(r.Context(), chi.URLParam(r, "id"))
 	if derr != nil {
 		mapStoreErr(w, derr)
 		return
 	}
-	for _, key := range []string{cosKey, thumbKey} {
+	for _, key := range []string{cosKey, thumbKey, videoKey} {
 		if key == "" {
 			continue
 		}

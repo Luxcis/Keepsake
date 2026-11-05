@@ -378,6 +378,9 @@ var extensionTypes = map[string]string{
 	".webp": "image/webp",
 	".heic": "image/heic",
 	".heif": "image/heif",
+	// 实况照片视频对象；与 handlers 的 allowedVideoTypes 保持一致。
+	".mp4": "video/mp4",
+	".mov": "video/quicktime",
 }
 
 // contentTypeForKey 按扩展名返回类型（与 handlers 的上传白名单一致）。

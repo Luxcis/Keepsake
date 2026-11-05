@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api, isGateRequired, type LightboxPhoto, type PhotoItem, type Trip } from '@/api/client'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
+import LivePhotoMedia from '@/components/LivePhotoMedia.vue'
 import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
 import { bindMotion } from '@/compositions/motion'
@@ -78,7 +79,9 @@ function pickTrip(id: string) {
 const viewable = computed<LightboxPhoto[]>(() =>
   photos.value.flatMap((p) => {
     const display = p.preview_src || p.src
-    return display ? [{ id: p.id, src: display, caption: p.title ?? undefined }] : []
+    return display
+      ? [{ id: p.id, src: display, videoSrc: p.video_src || undefined, caption: p.title ?? undefined }]
+      : []
   }),
 )
 
@@ -140,8 +143,14 @@ onBeforeUnmount(() => ctx?.revert())
               :disabled="!p.src"
               @click="p.src && openPhoto(p)"
             >
+              <LivePhotoMedia
+                v-if="p.video_src && p.thumb_src"
+                :photo-src="p.thumb_src"
+                :video-src="p.video_src"
+                mode="card"
+              />
               <img
-                v-if="p.thumb_src"
+                v-else-if="p.thumb_src"
                 :src="p.thumb_src"
                 :alt="p.title"
                 loading="lazy"
@@ -152,7 +161,7 @@ onBeforeUnmount(() => ctx?.revert())
               </div>
               <span
                 v-if="p.title"
-                class="absolute bottom-0 inset-x-0 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs"
+                class="absolute bottom-0 inset-x-0 z-20 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs"
                 >{{ p.title }}</span
               >
             </button>

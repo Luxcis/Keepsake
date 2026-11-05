@@ -3,6 +3,7 @@
 // COS 签名链路上线后由照片墙/旅行详情直接使用；本组件不关心图片来源。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { LightboxPhoto } from '@/api/client'
+import LivePhotoMedia from '@/components/LivePhotoMedia.vue'
 
 const props = defineProps<{
   photos: LightboxPhoto[]
@@ -19,6 +20,11 @@ const current = computed(() =>
 
 const loading = ref(false)
 const failed = ref(false)
+// 当前照片是否为实况（有视频地址）；单独收敛类型，模板里直接用非空字段。
+const liveCurrent = computed(() => {
+  const p = current.value
+  return p?.videoSrc ? { id: p.id, src: p.src, videoSrc: p.videoSrc } : null
+})
 // 已预加载的 URL（相邻图各预取一次即可，切回来时走浏览器缓存）
 const prefetched = new Set<string>()
 
@@ -37,6 +43,19 @@ function onError(e: Event) {
   if (isStale(e)) return
   loading.value = false
   failed.value = true
+}
+
+// 实况照片：图片加载成功即撤掉“加载中”；只有图片本身失败才展示失败提示，
+// 视频失败由库回退到静态图，不阻断浏览。
+function onLivePhotoLoad() {
+  loading.value = false
+}
+
+function onLiveError(type: string) {
+  if (type === 'PHOTO_LOAD_ERROR' || type === 'VALIDATION_ERROR') {
+    loading.value = false
+    failed.value = true
+  }
 }
 
 // 切换照片后立刻清掉上一张的残影：浏览器会保留旧帧直到新图解码完成，
@@ -137,8 +156,18 @@ onBeforeUnmount(() => {
       </button>
       <div class="max-w-5xl w-full text-center">
         <div class="min-h-[45vh] flex flex-col items-center justify-center">
+          <div v-if="liveCurrent && !failed" class="w-full h-[78vh]">
+            <LivePhotoMedia
+              :key="liveCurrent.id ?? liveCurrent.src"
+              :photo-src="liveCurrent.src"
+              :video-src="liveCurrent.videoSrc"
+              mode="lightbox"
+              @photo-load="onLivePhotoLoad"
+              @error="onLiveError"
+            />
+          </div>
           <img
-            v-if="current && !failed"
+            v-else-if="current && !failed"
             :key="current.src"
             :src="current.src"
             :alt="current.caption ?? '照片预览'"
