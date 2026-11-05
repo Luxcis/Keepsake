@@ -417,20 +417,26 @@ func (h *Handlers) reorderPhotos(w http.ResponseWriter, r *http.Request) {
 	Data(w, http.StatusOK, map[string]any{"reordered": true})
 }
 
-// DELETE /api/admin/photos/{id} —— 先删数据库关联，再入队补偿删除视频/缩略图/原图对象（计划 §4.1）。
+// DELETE /api/admin/photos/{id} —— 先删数据库关联，再同步删除视频/缩略图/原图对象；
+// 只有同步删除失败的对象才入队，由 janitor 重试（计划 §4.1）。
 func (h *Handlers) deletePhoto(w http.ResponseWriter, r *http.Request) {
 	cosKey, thumbKey, videoKey, derr := h.st.DeletePhoto(r.Context(), chi.URLParam(r, "id"))
 	if derr != nil {
 		mapStoreErr(w, derr)
 		return
 	}
+	seen := make(map[string]bool, 3)
 	for _, key := range []string{cosKey, thumbKey, videoKey} {
-		if key == "" {
+		if key == "" || seen[key] {
 			continue
 		}
-		if _, qerr := h.st.EnqueueDeleteTask(r.Context(), key); qerr != nil {
-			// 任务队列写入失败：主链路仍然成功；孤儿对象的兜底依赖备份恢复与人工清理
-			slog.Error("enqueue delete task failed", "err", qerr)
+		seen[key] = true
+		if delErr := h.cos.Delete(key); delErr != nil {
+			slog.Error("delete storage object failed, enqueue retry", "key", key, "err", delErr)
+			if _, qerr := h.st.EnqueueDeleteTask(r.Context(), key); qerr != nil {
+				// 任务队列写入失败：主链路仍然成功；孤儿对象的兜底依赖备份恢复与人工清理
+				slog.Error("enqueue delete task failed", "err", qerr)
+			}
 		}
 	}
 	Data(w, http.StatusOK, map[string]any{"deleted": true})

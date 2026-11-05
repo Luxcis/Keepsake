@@ -74,10 +74,11 @@
 - **AND** 无视频照片的响应结构与改动前一致
 - 验收：A1、A6
 
-### Requirement: 删除补偿
+### Requirement: 删除清理
 
 - **WHEN** 删除一张带 `video_key` 的照片
-- **THEN** 图片 key 与视频 key 都写入 `cos_delete_tasks`
+- **THEN** 删除请求返回前，图片 key 与视频 key 对应的对象从存储后端同步删除
+- **AND** 只有同步删除失败的对象写入 `cos_delete_tasks`，由后台 janitor 重试
 - **AND** 无视频照片仍只清理图片 key
 - 验收：A7
 

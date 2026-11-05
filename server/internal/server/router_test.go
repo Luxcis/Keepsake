@@ -28,6 +28,8 @@ type deps struct {
 	st   *store.Store
 	http *http.Client
 	base string
+	// storageRoot 是本地存储对象根目录；仅使用 localstore 的集成测试会设置。
+	storageRoot string
 }
 
 func newStack(t *testing.T) *deps {

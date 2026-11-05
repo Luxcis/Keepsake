@@ -14,7 +14,6 @@ import (
 	"keepsake/internal/config"
 	"keepsake/internal/cosutil"
 	"keepsake/internal/handlers"
-	"keepsake/internal/localstore"
 	"keepsake/internal/store"
 )
 
@@ -44,8 +43,9 @@ func New(cfg config.Config, st *store.Store, cch *cachex.Cache, backend cosutil.
 	r.Route("/api", func(r chi.Router) {
 		// 本地存储的直传/读取端点：URL 自带 HMAC 能力签名且不依赖 Cookie，
 		// 与 COS 预签名 URL 同语义，因此不经过 CSRF 与内容门禁。
-		if ls, ok := backend.(*localstore.Store); ok {
-			r.Mount("/storage", ls.Router())
+		// 以最小接口判断，避免与具体后端类型耦合（也便于测试注入包装实现）。
+		if sr, ok := backend.(interface{ Router() http.Handler }); ok {
+			r.Mount("/storage", sr.Router())
 		}
 		r.Group(func(r chi.Router) {
 			r.Use(csrfSameOrigin)

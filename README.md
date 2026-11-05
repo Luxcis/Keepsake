@@ -138,7 +138,8 @@ docker compose down
 选择文件 → POST /api/admin/uploads/sign（校验类型/大小，服务端生成 Key）
         → 浏览器 XHR 直传（PUT，进度条）→ POST /api/admin/photos/confirm
         （服务端 HEAD 校验真实存在/大小/类型后才入库）
-删除：先删数据库关联 → cos_delete_tasks 表入队 → 后台 janitor 60s 轮询补偿删对象（404 幂等）
+删除：先删数据库关联 → 同步删除原图/缩略图/视频对象；仅删除失败的对象入队
+      → 后台 janitor 60s 轮询补偿（404 幂等）
 展示：GET /api/trips/{id}/photos 输出短时效签名 URL
 ```
 
