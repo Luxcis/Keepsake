@@ -10,9 +10,16 @@ import (
 	"time"
 )
 
-// MaxUploadBytes 是单张照片上传上限（30MB，与前端/后端校验一致）。
-// 签名接口、本地存储写入与 COS 确认阶段共用同一上限。
+// MaxUploadBytes 是单张图片上传上限（30MB，与前端/后端校验一致）。
+// 签名接口、本地存储写入与 COS 确认阶段都按媒体类型选择上限。
 const MaxUploadBytes int64 = 30 << 20
+
+// MaxVideoUploadBytes 是单个视频对象（独立视频或实况照片视频）的上传上限（400MB）。
+const MaxVideoUploadBytes int64 = 400 << 20
+
+// MaxMediaUploadBytes 是存储层单对象写入上限，取图片与视频两类的最大值；
+// 具体媒体类型仍由签名与确认阶段分别校验。
+const MaxMediaUploadBytes int64 = MaxVideoUploadBytes
 
 type Config struct {
 	// Env: dev / production。production 下日志为纯 JSON，便于容器采集。

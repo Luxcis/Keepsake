@@ -43,7 +43,7 @@
 | 路由 | 页面 |
 | --- | --- |
 | `/` | 首页（主视觉 + CTA） |
-| `/trips` · `/trips/:id` | 旅行足迹 · 旅行详情（含该旅行的照片列表与灯箱） |
+| `/trips` · `/trips/:id` | 足迹 · 旅行详情（含该旅行的照片与视频列表、灯箱） |
 | `/photos` | 旧照片墙链接，重定向到 `/trips` |
 | `/timeline` | 时光轴 |
 | `/letter` | 生日信（门禁阶段接入数据） |
@@ -153,7 +153,7 @@ docker compose down
 启用 COS 前必须在腾讯云 COS 控制台完成（计划 §6.2 风险项）：
 
 1. Bucket 权限设为**私有**（只允许本服务密钥与预签名访问）。
-2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`，最大 30MB。
+2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`。上传对象上限为图片 30MB、视频 400MB，由服务端与 Nginx 同步限制。
 3. 建议开启 COS 版本控制/生命周期策略（照片不可再生，备份 §5.3）。
 
 之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用。只想用本地磁盘时无需 COS：开发环境自动启用，容器部署在 `.env` 设置 `STORAGE_DRIVER=local`（文件写入 `./data/uploads`）；两者都未配置时上传接口返回语义化的 `503 cos_not_configured`。

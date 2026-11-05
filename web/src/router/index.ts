@@ -4,9 +4,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 // meta.title 用于 document.title；admin 段在认证阶段加守卫。
 export const routes = [
   { path: '/', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: '首页' } },
-  { path: '/trips', name: 'trips', component: () => import('@/views/TripsView.vue'), meta: { title: '旅行足迹' } },
+  { path: '/trips', name: 'trips', component: () => import('@/views/TripsView.vue'), meta: { title: '足迹' } },
   { path: '/trips/:id', name: 'trip-detail', component: () => import('@/views/TripDetailView.vue'), meta: { title: '旅行详情' } },
-  // 照片收藏页已移除，照片改在旅行详情中浏览；旧链接重定向到旅行足迹。
+  // 照片收藏页已移除，照片改在旅行详情中浏览；旧链接重定向到足迹。
   { path: '/photos', redirect: { name: 'trips' } },
   { path: '/timeline', name: 'timeline', component: () => import('@/views/TimelineView.vue'), meta: { title: '时光轴' } },
   { path: '/letter', name: 'letter', component: () => import('@/views/LetterView.vue'), meta: { title: '生日信' } },

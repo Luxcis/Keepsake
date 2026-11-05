@@ -16,7 +16,7 @@ import LivePhotoMedia from '@/components/LivePhotoMedia.vue'
 import { bindMotion } from '@/compositions/motion'
 
 // 旅行详情（计划 §2）：故事、地点列表与照片；空字段优雅隐藏；门禁降级。
-// 照片来自该旅行的全部照片，缩略图网格 + 灯箱（实况照片可播放）。
+// 照片与单独上传的视频来自同一接口，混排网格 + 灯箱（实况照片与视频可播放）。
 const route = useRoute()
 const trip = ref<Trip | null>(null)
 const locations = ref<TripLocation[]>([])
@@ -71,10 +71,16 @@ async function runEntrance() {
 const showLocations = computed(() => locations.value.length > 0)
 const showStory = computed(() => !!trip.value?.summary)
 
-// 可放大查看的照片：优先用显示尺寸签名（原图可达 30MB，灯箱直连会让切换长时间停在上一张）。
-// 过滤掉无原图的条目后下标会与网格错位，所以点击时按 id 反查灯箱下标。
+// 可放大查看的条目：照片优先用显示尺寸签名（原图可达 30MB，灯箱直连会让切换长时间停在上一张），
+// 独立视频直接用签名后的视频地址。过滤掉无可用地址的条目后下标会与网格错位，
+// 所以点击时按 id 反查灯箱下标。
 const viewable = computed<LightboxPhoto[]>(() =>
-  photos.value.flatMap((p) => {
+  photos.value.flatMap((p): LightboxPhoto[] => {
+    if (p.media_kind === 'video') {
+      return p.video_src
+        ? [{ id: p.id, src: p.video_src, mediaKind: 'video', caption: p.title ?? undefined }]
+        : []
+    }
     const display = p.preview_src || p.src
     return display
       ? [{ id: p.id, src: display, videoSrc: p.video_src || undefined, caption: p.title ?? undefined }]
@@ -96,7 +102,7 @@ onBeforeUnmount(() => ctx?.revert())
     <div class="max-w-5xl mx-auto px-6 md:px-12 py-20">
       <p class="mb-6">
         <RouterLink to="/trips" class="text-xs tracking-widest text-muted hover:text-ink"
-          >← 返回旅行足迹</RouterLink
+          >← 返回足迹</RouterLink
         >
       </p>
 
@@ -162,11 +168,19 @@ onBeforeUnmount(() => ctx?.revert())
                   v-for="p in photos"
                   :key="p.id"
                   class="photo-card aspect-[4/5] rounded-sm group reveal"
-                  :disabled="!p.src"
-                  @click="p.src && openPhoto(p)"
+                  :disabled="!p.src && !p.video_src"
+                  @click="(p.src || p.video_src) && openPhoto(p)"
                 >
+                  <video
+                    v-if="p.media_kind === 'video' && p.video_src"
+                    :src="p.video_src"
+                    preload="metadata"
+                    muted
+                    playsinline
+                    class="w-full h-full object-cover"
+                  ></video>
                   <LivePhotoMedia
-                    v-if="p.video_src && p.thumb_src"
+                    v-else-if="p.video_src && p.thumb_src"
                     :photo-src="p.thumb_src"
                     :video-src="p.video_src"
                     mode="card"
@@ -182,8 +196,14 @@ onBeforeUnmount(() => ctx?.revert())
                     v-else
                     class="w-full h-full flex items-center justify-center text-[10px] text-muted"
                   >
-                    签名生成失败
+                    {{ p.media_kind === 'video' ? '视频地址签名失败' : '签名生成失败' }}
                   </div>
+                  <span
+                    v-if="p.media_kind === 'video'"
+                    class="absolute top-3 left-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-[11px] text-white"
+                    aria-hidden="true"
+                    >▶</span
+                  >
                   <span
                     v-if="p.title"
                     class="absolute bottom-0 inset-x-0 z-20 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs"

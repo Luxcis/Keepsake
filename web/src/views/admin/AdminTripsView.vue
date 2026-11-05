@@ -89,7 +89,8 @@ async function loadCoverPhotos() {
     const data = await api.get<{ enabled: boolean; photos: PhotoItem[] }>(
       `/api/admin/trips/${form.id}/photos`,
     )
-    coverPhotos.value = data.photos
+    // 视频条目没有缩略图，不能作为封面候选。
+    coverPhotos.value = data.photos.filter((p) => p.media_kind !== 'video')
   } catch (err) {
     message.value = err instanceof Error ? err.message : '照片列表加载失败'
   }

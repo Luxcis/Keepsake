@@ -20,7 +20,7 @@
       </RouterLink>
 
       <nav class="hidden md:flex items-center gap-8 text-xs tracking-wide" aria-label="主导航">
-        <RouterLink class="nav-link" to="/trips">旅行足迹</RouterLink>
+        <RouterLink class="nav-link" to="/trips">足迹</RouterLink>
         <RouterLink class="nav-link" to="/timeline">时光轴</RouterLink>
         <RouterLink class="nav-link" to="/letter">生日信</RouterLink>
       </nav>

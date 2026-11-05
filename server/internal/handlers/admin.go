@@ -82,13 +82,17 @@ func (h *Handlers) updateTrip(w http.ResponseWriter, r *http.Request) {
 	}
 	// 封面校验：非空指针且非空串才需要落地校验（"" 是清除，缺失是保持）。
 	if in.CoverPhotoID != nil && *in.CoverPhotoID != "" {
-		tripID, _, _, perr := h.st.GetPhotoKeys(r.Context(), *in.CoverPhotoID)
+		tripID, _, _, kind, perr := h.st.GetPhotoKeys(r.Context(), *in.CoverPhotoID)
 		if perr != nil && perr != store.ErrNotFound {
 			mapStoreErr(w, perr)
 			return
 		}
 		if perr != nil || tripID != id {
 			err(w, http.StatusBadRequest, "bad_request", "封面照片不存在或不属于该旅行")
+			return
+		}
+		if kind == store.MediaVideo {
+			err(w, http.StatusBadRequest, "bad_request", "视频不能用作旅行封面")
 			return
 		}
 	}

@@ -27,7 +27,7 @@ var allowedImageTypes = map[string]string{
 	"image/heif": "heif",
 }
 
-// allowedVideoTypes：实况照片视频对象白名单 → 扩展名。
+// allowedVideoTypes：视频对象白名单 → 扩展名（实况照片视频与独立视频共用）。
 // mp4 覆盖 Android 动态照片与内嵌 MP4；quicktime 覆盖 iOS 实况照片导出的 .MOV。
 var allowedVideoTypes = map[string]string{
 	"video/mp4":       "mp4",
@@ -43,7 +43,14 @@ func uploadExt(contentType string) (string, bool) {
 	return ext, ok
 }
 
-const maxUploadBytes = config.MaxUploadBytes // 30MB：签名接口、确认阶段与本地存储写入共用
+// uploadLimit 返回该媒体类型的单对象上限：视频 400MB，图片 30MB。
+// 签名接口、确认阶段与前端提示共用同一组上限。
+func uploadLimit(contentType string) int64 {
+	if _, ok := allowedVideoTypes[contentType]; ok {
+		return config.MaxVideoUploadBytes
+	}
+	return config.MaxUploadBytes
+}
 
 // cosErrToHTTP：存储层错误 → 统一 HTTP 语义（本地存储与 COS 共用）。
 // cos_not_configured 单独成码：管理员需要一眼看出“是环境没配存储”，而非服务故障。
@@ -78,12 +85,13 @@ func (h *Handlers) signUpload(w http.ResponseWriter, r *http.Request) {
 	in.ContentType = strings.ToLower(strings.TrimSpace(in.ContentType))
 	ext, ok := uploadExt(in.ContentType)
 	if !ok {
-		err(w, http.StatusBadRequest, "bad_request", "仅支持 jpeg/png/webp/heic/heif 与实况视频 mp4/mov")
+		err(w, http.StatusBadRequest, "bad_request", "仅支持 jpeg/png/webp/heic/heif 图片与 mp4/mov 视频")
 		return
 	}
-	if in.Size <= 0 || in.Size > maxUploadBytes {
+	limit := uploadLimit(in.ContentType)
+	if in.Size <= 0 || in.Size > limit {
 		err(w, http.StatusBadRequest, "bad_request",
-			"文件大小需在 1 字节到 "+strconv.FormatInt(maxUploadBytes>>20, 10)+"MB 之间")
+			"文件大小需在 1 字节到 "+strconv.FormatInt(limit>>20, 10)+"MB 之间")
 		return
 	}
 
@@ -98,7 +106,7 @@ func (h *Handlers) signUpload(w http.ResponseWriter, r *http.Request) {
 		"cos_key":      key,
 		"upload_url":   uploadURL,
 		"content_type": in.ContentType,
-		"max_bytes":    maxUploadBytes,
+		"max_bytes":    limit,
 		"expires_at":   expireAt.UTC().Format(time.RFC3339),
 	}
 	if in.AlbumID != "" {
@@ -149,18 +157,33 @@ func (h *Handlers) confirmPhoto(w http.ResponseWriter, r *http.Request) {
 		cosErrToHTTP(w, herr)
 		return
 	}
-	if size <= 0 || size > maxUploadBytes {
-		err(w, http.StatusBadRequest, "bad_request", "对象大小超出限制")
-		return
-	}
-	if baseCT(ctype) != "" && allowedImageTypes[strings.ToLower(baseCT(ctype))] == "" {
-		err(w, http.StatusBadRequest, "bad_request", "对象类型不在白名单内: "+ctype)
-		return
+	// 主对象可以是图片或独立视频：视频写入 media_kind=video，图片保持 photo。
+	kind := store.MediaPhoto
+	headCT := strings.ToLower(baseCT(ctype))
+	if _, isVideo := allowedVideoTypes[headCT]; isVideo {
+		kind = store.MediaVideo
+		if size <= 0 || size > config.MaxVideoUploadBytes {
+			err(w, http.StatusBadRequest, "bad_request", "视频大小超出限制")
+			return
+		}
+	} else {
+		if size <= 0 || size > config.MaxUploadBytes {
+			err(w, http.StatusBadRequest, "bad_request", "对象大小超出限制")
+			return
+		}
+		if headCT != "" && allowedImageTypes[headCT] == "" {
+			err(w, http.StatusBadRequest, "bad_request", "对象类型不在白名单内: "+ctype)
+			return
+		}
 	}
 
 	// 实况视频（可选）：与图片同属当前旅行前缀，且必须是白名单内的视频对象。
 	var videoKey *string
 	if vk := strings.TrimSpace(in.VideoKey); vk != "" {
+		if kind == store.MediaVideo {
+			err(w, http.StatusBadRequest, "bad_request", "视频条目不能同时携带 video_key")
+			return
+		}
 		if len(vk) > 255 {
 			err(w, http.StatusBadRequest, "bad_request", "video_key 过长")
 			return
@@ -174,7 +197,7 @@ func (h *Handlers) confirmPhoto(w http.ResponseWriter, r *http.Request) {
 			cosErrToHTTP(w, vherr)
 			return
 		}
-		if vsize <= 0 || vsize > maxUploadBytes {
+		if vsize <= 0 || vsize > config.MaxVideoUploadBytes {
 			err(w, http.StatusBadRequest, "bad_request", "实况视频大小超出限制")
 			return
 		}
@@ -197,7 +220,7 @@ func (h *Handlers) confirmPhoto(w http.ResponseWriter, r *http.Request) {
 
 	id, cerr := h.st.CreatePhoto(r.Context(), store.PhotoInput{
 		TripID: in.TripID, AlbumID: in.AlbumID, COSKey: in.COSKey, VideoKey: videoKey,
-		Title: in.Title, Description: in.Description, TakenAt: in.TakenAt,
+		MediaKind: kind, Title: in.Title, Description: in.Description, TakenAt: in.TakenAt,
 		Width: in.Width, Height: in.Height,
 	})
 	if cerr != nil {
@@ -257,12 +280,26 @@ func (h *Handlers) servePhotos(w http.ResponseWriter, r *http.Request, tripID st
 	enabled := h.cos.Enabled()
 	out := []map[string]any{}
 	for _, p := range photos {
+		kind := p.MediaKind
+		if kind == "" {
+			kind = store.MediaPhoto
+		}
 		row := map[string]any{
 			"id": p.ID, "album_id": p.AlbumID.String, "title": p.Title,
 			"description": p.Description, "width": p.Width, "height": p.Height,
 			"sort_order": p.SortOrder, "taken_at": nilOrValue(p.TakenAt.Valid, p.TakenAt.String),
+			"media_kind": kind,
 		}
 		if enabled {
+			if kind == store.MediaVideo {
+				// 视频条目没有图片对象：原图/预览/缩略图留空，视频地址由 cos_key 签名。
+				row["src"] = ""
+				row["preview_src"] = ""
+				row["thumb_src"] = ""
+				row["video_src"] = h.signObject(p.COSKey)
+				out = append(out, row)
+				continue
+			}
 			src, serr := h.cos.SignGET(p.COSKey)
 			if serr != nil {
 				slog.Warn("photo sign get failed", "key", p.COSKey, "err", serr)
@@ -328,12 +365,21 @@ func (h *Handlers) signPreview(cosKey string) string {
 // signVideo 签名实况视频 URL；无视频或签名失败时返回空串。
 // 前端以 video_src 是否存在判定实况照片，空串即普通静态照片。
 func (h *Handlers) signVideo(videoKey sql.NullString) string {
-	if !h.cos.Enabled() || !videoKey.Valid || videoKey.String == "" {
+	if !videoKey.Valid || videoKey.String == "" {
 		return ""
 	}
-	u, err := h.cos.SignGET(videoKey.String)
+	return h.signObject(videoKey.String)
+}
+
+// signObject 签名任意媒体对象的 GET URL；失败时返回空串并记 warn。
+// 独立视频条目直接签名 cos_key，实况视频签名 video_key，两者共用同一语义。
+func (h *Handlers) signObject(key string) string {
+	if !h.cos.Enabled() || key == "" {
+		return ""
+	}
+	u, err := h.cos.SignGET(key)
 	if err != nil {
-		slog.Warn("photo sign video failed", "key", videoKey.String, "err", err)
+		slog.Warn("photo sign object failed", "key", key, "err", err)
 		return ""
 	}
 	return u
@@ -345,8 +391,8 @@ func (h *Handlers) fillCoverThumb(ctx context.Context, t *store.Trip) {
 	if !h.cos.Enabled() || !t.CoverPhotoID.Valid {
 		return
 	}
-	tripID, cosKey, thumbKey, gerr := h.st.GetPhotoKeys(ctx, t.CoverPhotoID.String)
-	if gerr != nil || tripID != t.ID {
+	tripID, cosKey, thumbKey, kind, gerr := h.st.GetPhotoKeys(ctx, t.CoverPhotoID.String)
+	if gerr != nil || tripID != t.ID || kind == store.MediaVideo {
 		return
 	}
 	t.CoverThumbSrc = h.signThumb(cosKey, thumbKey)

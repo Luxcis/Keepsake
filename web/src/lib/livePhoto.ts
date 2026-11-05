@@ -29,13 +29,24 @@ export interface PhotoUploadPlan {
   photo: MediaPart
 }
 
+// 单独上传的视频：没有配对照片时作为一个只含视频对象的条目。
+export interface VideoUploadPlan {
+  kind: 'video'
+  name: string
+  video: MediaPart
+}
+
 export interface SkippedUploadPlan {
   kind: 'skipped'
   name: string
   reason: string
 }
 
-export type UploadPlan = LiveUploadPlan | PhotoUploadPlan | SkippedUploadPlan
+export type UploadPlan = LiveUploadPlan | PhotoUploadPlan | VideoUploadPlan | SkippedUploadPlan
+
+// 与服务端一致的单对象上限：图片 30MB，视频 400MB。
+export const MAX_IMAGE_BYTES = 30 * 1024 * 1024
+export const MAX_VIDEO_BYTES = 400 * 1024 * 1024
 
 const IMAGE_EXT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -190,7 +201,8 @@ export async function splitMergedLivePhoto(file: File): Promise<{ photo: MediaPa
  * - 同名图像 + 视频 → 一张实况照片；
  * - 可拆分的合并文件 → 一张实况照片；
  * - 其余图像 → 普通照片；
- * - 未配对的视频/未知文件 → 跳过并给出原因。
+ * - 未配对的视频 → 独立视频条目；
+ * - 超过大小上限的文件与未知类型 → 跳过并给出原因。
  */
 export async function buildUploadPlans(files: File[]): Promise<UploadPlan[]> {
   const images: File[] = []
@@ -199,8 +211,19 @@ export async function buildUploadPlans(files: File[]): Promise<UploadPlan[]> {
 
   for (const file of files) {
     if (isImageFile(file)) {
+      // 超过服务端上限的文件在直传前拦下，避免白传几百 MB 后被确认接口拒绝。
+      // 可拆分的合并实况文件不在此处按 30MB 拒绝：文件尾部可能带有最多 400MB 的视频，
+      // 拆分后再分别校验图片与视频两部分。
+      if (!SPLIT_EXT.has(fileExt(file.name)) && file.size > MAX_IMAGE_BYTES) {
+        skipped.push({ kind: 'skipped', name: file.name, reason: '图片超过 30MB，已跳过' })
+        continue
+      }
       images.push(file)
     } else if (isVideoFile(file)) {
+      if (file.size > MAX_VIDEO_BYTES) {
+        skipped.push({ kind: 'skipped', name: file.name, reason: '视频超过 400MB，已跳过' })
+        continue
+      }
       videos.push(file)
     } else {
       skipped.push({ kind: 'skipped', name: file.name, reason: '不支持的文件类型，已跳过' })
@@ -214,6 +237,11 @@ export async function buildUploadPlans(files: File[]): Promise<UploadPlan[]> {
     const base = baseName(image.name).toLowerCase()
     const paired = videos.find((v) => !usedVideos.has(v) && baseName(v.name).toLowerCase() === base)
     if (paired) {
+      if (image.size > MAX_IMAGE_BYTES) {
+        // 图片超限：跳过配对，视频留给后面的独立视频分支。
+        skipped.push({ kind: 'skipped', name: image.name, reason: '图片超过 30MB，已跳过' })
+        continue
+      }
       usedVideos.add(paired)
       plans.push({
         kind: 'live',
@@ -227,29 +255,39 @@ export async function buildUploadPlans(files: File[]): Promise<UploadPlan[]> {
     if (SPLIT_EXT.has(fileExt(image.name))) {
       const split = await splitMergedLivePhoto(image)
       if (split) {
-        plans.push({ kind: 'live', name: baseName(image.name), ...split })
+        const tooLarge = split.photo.blob.size > MAX_IMAGE_BYTES || split.video.blob.size > MAX_VIDEO_BYTES
+        plans.push(
+          tooLarge
+            ? { kind: 'skipped', name: image.name, reason: '实况照片超过大小上限，已跳过' }
+            : { kind: 'live', name: baseName(image.name), ...split },
+        )
         continue
       }
     }
 
+    if (image.size > MAX_IMAGE_BYTES) {
+      plans.push({ kind: 'skipped', name: image.name, reason: '图片超过 30MB，已跳过' })
+      continue
+    }
     plans.push({ kind: 'photo', name: baseName(image.name), photo: partOf(image, imageContentType(image)) })
   }
 
   for (const video of videos) {
     if (usedVideos.has(video)) continue
     plans.push({
-      kind: 'skipped',
-      name: video.name,
-      reason: '未找到同名照片，视频不会单独上传',
+      kind: 'video',
+      name: baseName(video.name),
+      video: partOf(video, videoContentType(video)),
     })
   }
 
   return [...plans, ...skipped]
 }
 
-/** 上传计划的总字节数，用于把两个对象的进度合成一个百分比。 */
+/** 上传计划的总字节数，用于把多个对象的进度合成一个百分比。 */
 export function planBytes(plan: UploadPlan): number {
   if (plan.kind === 'photo') return plan.photo.blob.size
+  if (plan.kind === 'video') return plan.video.blob.size
   if (plan.kind === 'live') return plan.photo.blob.size + plan.video.blob.size
   return 0
 }
