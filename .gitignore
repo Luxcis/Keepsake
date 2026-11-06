@@ -1,3 +1,31 @@
+
+# >>> Project >>>
+# 构建产物
+node_modules/
+dist/
+server/server
+*.tsbuildinfo
+
+# 运行数据与数据库（SQLite WAL 会产生 -wal/-shm 伴生文件）
+data/*
+!data/.gitkeep
+server/data/
+web/data/
+
+# 密钥与本地环境
+.env
+.env.local
+*.pem
+
+# 本地代码索引
+.codegraph/
+
+# 系统与编辑器
+.DS_Store
+*.log
+.idea/
+.vscode/
+# <<< Project <<<
 # >>> Comet managed project state >>>
 !/.comet/
 /.comet/*
@@ -22,30 +50,3 @@
 .comet-state.lock
 .comet-state-transaction.json
 # <<< Comet managed project state <<<
-
-# >>> Project >>>
-# 构建产物
-node_modules/
-dist/
-server/server
-
-# 运行数据与数据库（SQLite WAL 会产生 -wal/-shm 伴生文件）
-data/*
-!data/.gitkeep
-server/data/
-web/data/
-
-# 密钥与本地环境
-.env
-.env.local
-*.pem
-
-# 本地代码索引
-.codegraph/
-
-# 系统与编辑器
-.DS_Store
-*.log
-.idea/
-.vscode/
-# <<< Project <<<
