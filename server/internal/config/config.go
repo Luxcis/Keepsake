@@ -53,6 +53,9 @@ type Config struct {
 	COSSecretKey string
 	COSRegion    string
 	COSBucket    string
+	// COSOriginDomain: 可选；COS 控制台绑定的「自定义源站域名」（如 photos.example.com）。
+	// 为空时使用默认 {bucket}.cos.{region}.myqcloud.com；预签名与 HEAD/DELETE 均走该域名。
+	COSOriginDomain string
 	// COSURLExpires: 预签名 URL 有效期秒数（计划 §5.1：短时效）。
 	COSURLExpires time.Duration
 	// StorageDriver: 存储后端选择：local / cos；留空自动选择
@@ -72,18 +75,19 @@ type Config struct {
 func Load() Config {
 	dataDir := getEnv("DATA_DIR", "./data")
 	return Config{
-		Env:           getEnv("APP_ENV", "dev"),
-		Port:          getEnv("API_PORT", "8080"),
-		DataDir:       dataDir,
-		DBFile:        getEnv("DB_FILE", "journey.db"),
-		RedisAddr:     getEnv("REDIS_ADDR", ""),
-		RedisPassword: os.Getenv("REDIS_PASSWORD"),
-		CookieSecure:  getCookieSecure(getEnv("COOKIE_SECURE", "")),
-		COSSecretID:   os.Getenv("COS_SECRET_ID"),
-		COSSecretKey:  os.Getenv("COS_SECRET_KEY"),
-		COSRegion:     getEnv("COS_REGION", ""),
-		COSBucket:     getEnv("COS_BUCKET", ""),
-		COSURLExpires: getURLExpires("COS_URL_EXPIRES", 900),
+		Env:             getEnv("APP_ENV", "dev"),
+		Port:            getEnv("API_PORT", "8080"),
+		DataDir:         dataDir,
+		DBFile:          getEnv("DB_FILE", "journey.db"),
+		RedisAddr:       getEnv("REDIS_ADDR", ""),
+		RedisPassword:   os.Getenv("REDIS_PASSWORD"),
+		CookieSecure:    getCookieSecure(getEnv("COOKIE_SECURE", "")),
+		COSSecretID:     os.Getenv("COS_SECRET_ID"),
+		COSSecretKey:    os.Getenv("COS_SECRET_KEY"),
+		COSRegion:       getEnv("COS_REGION", ""),
+		COSBucket:       getEnv("COS_BUCKET", ""),
+		COSOriginDomain: strings.TrimSpace(os.Getenv("COS_ORIGIN_DOMAIN")),
+		COSURLExpires:   getURLExpires("COS_URL_EXPIRES", 900),
 		// 存储后端：显式 local/cos；留空由启动逻辑按环境与 COS 配置选择。
 		StorageDriver:     strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_DRIVER"))),
 		StorageDir:        getEnv("STORAGE_DIR", filepath.Join(dataDir, "uploads")),
