@@ -66,14 +66,81 @@ type Client struct {
 	expires time.Duration
 }
 
-// New 根据环境配置构建 SDK 客户端；region 形如 ap-guangzhou。
-func New(secretID, secretKey, region, bucket string, urlExpires time.Duration) *Client {
-	u, _ := url.Parse(fmt.Sprintf("https://%s.cos.%s.myqcloud.com", bucket, region))
-	b := &cos.BaseURL{BucketURL: u}
+// Options 是 Client 的构造参数。
+type Options struct {
+	SecretID  string
+	SecretKey string
+	Region    string
+	Bucket    string
+	// Origin 是可选的自定义源站域名（COS 控制台「自定义源站域名」）。
+	// 支持 example.com 或 https://example.com（默认 https，端口可保留）。
+	// 为空时使用 https://{bucket}.cos.{region}.myqcloud.com。
+	// 预签名会按该域名计算 Host，因此域名必须已 CNAME 到该桶且 COS 能按此
+	// Host 校验签名；CDN 加速域名与带路径前缀的域名不适用。
+	Origin     string
+	URLExpires time.Duration
+}
+
+// New 根据配置构建 SDK 客户端；region 形如 ap-guangzhou。
+// 自定义源站域名非法时返回错误（启动即失败，避免上线后才发现签名 403）。
+func New(opts Options) (*Client, error) {
+	bucketURL, err := bucketURL(opts.Bucket, opts.Region, opts.Origin)
+	if err != nil {
+		return nil, err
+	}
+	b := &cos.BaseURL{BucketURL: bucketURL}
 	core := cos.NewClient(b, &http.Client{
-		Transport: &cos.AuthorizationTransport{SecretID: secretID, SecretKey: secretKey},
+		Transport: &cos.AuthorizationTransport{SecretID: opts.SecretID, SecretKey: opts.SecretKey},
 	})
-	return &Client{core: core, id: secretID, key: secretKey, expires: urlExpires}
+	return &Client{core: core, id: opts.SecretID, key: opts.SecretKey, expires: opts.URLExpires}, nil
+}
+
+// bucketURL 生成 BucketURL：优先使用自定义源站域名，否则回落到 COS 默认域名。
+func bucketURL(bucket, region, origin string) (*url.URL, error) {
+	if origin == "" {
+		u, err := url.Parse(fmt.Sprintf("https://%s.cos.%s.myqcloud.com", bucket, region))
+		if err != nil {
+			return nil, fmt.Errorf("parse cos bucket url (bucket=%q region=%q): %w", bucket, region, err)
+		}
+		return u, nil
+	}
+	u, err := parseOrigin(origin)
+	if err != nil {
+		return nil, fmt.Errorf("invalid COS_ORIGIN_DOMAIN %q: %w", origin, err)
+	}
+	return u, nil
+}
+
+// parseOrigin 规范化自定义源站域名：缺省补 https、去掉末尾斜杠，并拒绝
+// 带路径/查询/用户信息或非 http(s) 的值（COS 自定义源站域名只接受主机名）。
+func parseOrigin(raw string) (*url.URL, error) {
+	raw = strings.TrimSpace(raw)
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("scheme must be http or https, got %q", u.Scheme)
+	}
+	if u.Hostname() == "" {
+		return nil, errors.New("host is empty")
+	}
+	if u.User != nil {
+		return nil, errors.New("user info is not allowed")
+	}
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("path, query and fragment are not allowed")
+	}
+	// DNS 主机名不区分大小写，但签名按字符串比较：统一小写，避免浏览器
+	// 发送的 Host 与签名 Host 大小写不一致导致 403。
+	u.Host = strings.ToLower(u.Host)
+	u.Path = ""
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u, nil
 }
 
 func (c *Client) Enabled() bool { return true }

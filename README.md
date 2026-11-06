@@ -156,7 +156,7 @@ docker compose down
 2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`。上传对象上限为图片 30MB、视频 400MB，由服务端与 Nginx 同步限制。
 3. 建议开启 COS 版本控制/生命周期策略（照片不可再生，备份 §5.3）。
 
-之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用。只想用本地磁盘时无需 COS：开发环境自动启用，容器部署在 `.env` 设置 `STORAGE_DRIVER=local`（文件写入 `./data/uploads`）；两者都未配置时上传接口返回语义化的 `503 cos_not_configured`。
+之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用。如需通过自定义域名访问照片，先在 COS 控制台绑定「自定义源站域名」，再设置 `COS_ORIGIN_DOMAIN=photos.example.com`（可带 `https://`，不能带路径）：预签名 URL 的签名 Host 与服务端 HEAD/DELETE 都会使用该域名，因此域名必须已 CNAME 到该桶；CDN 加速域名不适用于当前预签名链路。只想用本地磁盘时无需 COS：开发环境自动启用，容器部署在 `.env` 设置 `STORAGE_DRIVER=local`（文件写入 `./data/uploads`）；两者都未配置时上传接口返回语义化的 `503 cos_not_configured`。
 
 ## 阶段路线（→ 计划 §6 排期）
 

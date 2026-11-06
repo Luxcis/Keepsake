@@ -35,6 +35,7 @@ services:
       COS_SECRET_KEY: ${COS_SECRET_KEY:-}
       COS_REGION: ${COS_REGION:-}
       COS_BUCKET: ${COS_BUCKET:-}
+      COS_ORIGIN_DOMAIN: ${COS_ORIGIN_DOMAIN:-}
       COS_URL_EXPIRES: ${COS_URL_EXPIRES:-900}
       # CORS_ORIGINS 为空即禁用（生产同源；开发走 vite proxy）
     volumes:
