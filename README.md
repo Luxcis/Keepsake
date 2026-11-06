@@ -12,7 +12,7 @@
 | 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS 4 + GSAP |
 | 后端 | Go 1.26 + chi（路由）+ `modernc.org/sqlite`（纯 Go 驱动）|
 | 缓存/会话 | Redis 8（go-redis/v9），可缺失运行（降级模式）|
-| 文件存储 | 本地磁盘（开发默认）或腾讯 COS（Bucket 私有 + 短时效签名 URL），`STORAGE_DRIVER` 切换 |
+| 文件存储 | 本地磁盘（开发默认）或腾讯 COS（私有桶直传；读取支持短时效签名或 CDN 域名），`STORAGE_DRIVER` 切换 |
 | 部署 | Docker Compose：单镜像 app（Nginx + Go API 同容器, dist + 反代 127.0.0.1:8080）+ 可选 redis（profiles） |
 
 ## 目录结构
@@ -138,7 +138,7 @@ docker compose down
         （服务端 HEAD 校验真实存在/大小/类型后才入库）
 删除：先删数据库关联 → 同步删除原图/缩略图/视频对象；仅删除失败的对象入队
       → 后台 janitor 60s 轮询补偿（404 幂等）
-展示：GET /api/trips/{id}/photos 输出短时效签名 URL
+展示：GET /api/trips/{id}/photos 输出读取 URL（CDN 无签名或短时效签名）
 ```
 
 存储后端由 `STORAGE_DRIVER` 切换，前端链路完全一致：
@@ -152,11 +152,11 @@ docker compose down
 
 启用 COS 前必须在腾讯云 COS 控制台完成（计划 §6.2 风险项）：
 
-1. Bucket 权限设为**私有**（只允许本服务密钥与预签名访问）。
+1. Bucket 权限默认设为**私有**（只允许本服务密钥与预签名访问）；若配置 `COS_CDN_DOMAIN` 由 CDN 读取，需在 CDN 开启回源鉴权，或把 Bucket 设为公共读（照片可被直接访问）。
 2. Bucket **CORS** 允许：来源 `http://<站点域名>`；方法 `PUT, GET, HEAD`；Headers `Content-Type`。上传对象上限为图片 30MB、视频 400MB，由服务端与 Nginx 同步限制。
 3. 建议开启 COS 版本控制/生命周期策略（照片不可再生，备份 §5.3）。
 
-之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用。如需通过自定义域名读取照片，先在 COS 控制台绑定「自定义源站域名」，再设置 `COS_ORIGIN_DOMAIN=photos.example.com`（可带 `https://`，不能带路径）：该域名仅用于读取类预签名 URL（原图/缩略图/灯箱），上传 PUT、HEAD 校验与删除仍走 `{bucket}.cos.{region}.myqcloud.com`；读取签名的 Host 按自定义域名计算，因此域名必须已 CNAME 到该桶，CDN 加速域名不适用。只想用本地磁盘时无需 COS：开发环境自动启用，容器部署在 `.env` 设置 `STORAGE_DRIVER=local`（文件写入 `./data/uploads`）；两者都未配置时上传接口返回语义化的 `503 cos_not_configured`。
+之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用。如需通过 CDN 读取照片，设置 `COS_CDN_DOMAIN=photos.example.com`（可带 `https://`，不能带路径）：原图/缩略图/灯箱 URL 直接指向该域名，不带 COS 签名与有效期（需在 CDN 开启回源鉴权，或把 Bucket 设为公共读；缩略图/灯箱沿用 imageMogr2 参数，CDN 侧需开启图片处理），上传 PUT、HEAD 校验与删除仍走 `{bucket}.cos.{region}.myqcloud.com`；未配置时读取继续使用短时效签名 URL。只想用本地磁盘时无需 COS：开发环境自动启用，容器部署在 `.env` 设置 `STORAGE_DRIVER=local`（文件写入 `./data/uploads`）；两者都未配置时上传接口返回语义化的 `503 cos_not_configured`。
 
 ## 阶段路线（→ 计划 §6 排期）
 
@@ -173,6 +173,6 @@ docker compose down
 
 - 应用层记录 **UTC**（SQLite 中 TEXT RFC3339 / YYYY-MM-DD），展示层按 Asia/Shanghai 格式化。
 - SQLite 开启 WAL + busy_timeout，连接池保守；备份使用 Online Backup API / `.backup`，勿复制裸 `.db`。
-- 对象 Key 服务端生成；COS SecretId/Key 严禁出服务端；签名 URL 短时效。
+- 对象 Key 服务端生成；COS SecretId/Key 严禁出服务端；未配置 CDN 时读取 URL 短时效签名。
 - 日志（slog JSON）不记录密码、Cookie、签名 URL。
 - 当前脚手架运行在可选 Redis 形态，检查点见 `/healthz`：`redis: disabled`=未启用（预期内）、`unreachable`=已配置但连不上（此时认证写入失败关闭）。

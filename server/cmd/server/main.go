@@ -182,18 +182,18 @@ func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, er
 			SecretKey:  cfg.COSSecretKey,
 			Region:     cfg.COSRegion,
 			Bucket:     cfg.COSBucket,
-			Origin:     cfg.COSOriginDomain,
+			CDNDomain:  cfg.COSCDNDomain,
 			URLExpires: cfg.COSURLExpires,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("init cos storage: %w", err)
 		}
-		origin := cfg.COSOriginDomain
-		if origin == "" {
-			origin = "default"
+		cdn := cfg.COSCDNDomain
+		if cdn == "" {
+			cdn = "disabled"
 		}
 		log.Info("storage enabled", "driver", "cos", "bucket", cfg.COSBucket,
-			"region", cfg.COSRegion, "read_origin", origin, "url_expires", cfg.COSURLExpires)
+			"region", cfg.COSRegion, "read_cdn", cdn, "url_expires", cfg.COSURLExpires)
 		return client, nil
 	case "none":
 		log.Warn("storage not configured: photo upload disabled (503); set STORAGE_DRIVER=local to use local disk")

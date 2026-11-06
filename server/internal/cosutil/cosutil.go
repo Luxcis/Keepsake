@@ -1,4 +1,5 @@
-// Package cosutil 封装腾讯 COS 私有桶访问：短时效预签名 PUT/GET、对象 HEAD 校验与删除。
+// Package cosutil 封装腾讯 COS 私有桶访问：短时效预签名 PUT、读取 URL（CDN
+// 无签名或签名 GET）、对象 HEAD 校验与删除。
 // 计划 §4.3/§5.1：对象 Key 由服务端生成；密钥只在此层出现；预签名 URL 限制方法与有效期。
 package cosutil
 
@@ -44,13 +45,12 @@ type Backend interface {
 	Enabled() bool
 	// SignPUT 生成受限 PUT 预签名 URL（Content-Type 一并参与签名）。
 	SignPUT(key, contentType string) (uploadURL string, expireAt time.Time, err error)
-	// SignGET 生成短时效读取 URL。
+	// SignGET 生成原图读取 URL：配置 CDN 时为无签名地址，否则为短时效签名 URL。
 	SignGET(key string) (string, error)
-	// SignGETThumb 生成签入 COS 缩放处理参数的缩略图 URL。
-	// 处理参数必须参与签名：私有读桶下签名后拼参数会被校验拒绝（403）。
+	// SignGETThumb 生成缩略图 URL：配置 CDN 时无签名，否则把 COS 缩放处理
+	// 参数签入 URL。处理参数不能在签名后追加（私有读桶会判 403）。
 	SignGETThumb(key string) (string, error)
-	// SignGETPreview 生成签入显示尺寸缩放参数的 URL（灯箱用，小于原图）。
-	// 与 SignGETThumb 同一签名约束：处理参数必须参与签名。
+	// SignGETPreview 生成灯箱显示尺寸 URL（小于原图），签名规则同 SignGETThumb。
 	SignGETPreview(key string) (string, error)
 	// Head 返回对象大小与 Content-Type；对象不存在返回 ErrObjectMissing。
 	Head(key string) (size int64, contentType string, err error)
@@ -62,8 +62,9 @@ type Backend interface {
 type Client struct {
 	// core 使用 COS 默认域名：上传签名、HEAD 校验与删除。
 	core *cos.Client
-	// read 使用自定义源站域名，仅负责读取类预签名；未配置源站时与 core 相同。
-	read *cos.Client
+	// cdn 是可选 CDN 域名：读取类 URL 不带签名；为空时读取回落到 core
+	// 的短时效签名 URL（私有桶直读）。
+	cdn *url.URL
 	// id/key 只用于预签名计算，不出现在日志或响应（计划 §5.1）。
 	id, key string
 	expires time.Duration
@@ -75,33 +76,32 @@ type Options struct {
 	SecretKey string
 	Region    string
 	Bucket    string
-	// Origin 是可选的自定义源站域名（COS 控制台「自定义源站域名」）。
-	// 仅用于读取类预签名 URL（原图/缩略图/灯箱）；上传 PUT、HEAD 校验与
-	// 删除始终使用 COS 默认域名。支持 example.com 或 https://example.com
-	// （默认 https，端口可保留）；为空时读取也使用默认域名。
-	// 预签名会按该域名计算 Host，因此域名必须已 CNAME 到该桶且 COS 能按此
-	// Host 校验签名；CDN 加速域名与带路径前缀的域名不适用。
-	Origin     string
+	// CDNDomain 是可选 CDN 域名（COS_CDN_DOMAIN），如 photos.example.com。
+	// 配置后读取类 URL（原图/缩略图/灯箱）直接使用该域名且不带 COS 签名，
+	// 因此需由 CDN 侧完成回源鉴权或 Bucket 设为公共读。
+	// 上传 PUT、HEAD 校验与删除始终使用 COS 默认域名。
+	// 支持 example.com 或 https://example.com（默认 https，端口可保留）；
+	// 为空时读取继续使用默认域名的短时效签名 URL。
+	CDNDomain  string
 	URLExpires time.Duration
 }
 
 // New 根据配置构建 SDK 客户端；region 形如 ap-guangzhou。
-// 自定义源站域名非法时返回错误（启动即失败，避免上线后才发现签名 403）。
+// CDN 域名非法时返回错误（启动即失败，避免上线后才发现读取地址不可用）。
 func New(opts Options) (*Client, error) {
 	coreURL, err := defaultBucketURL(opts.Bucket, opts.Region)
 	if err != nil {
 		return nil, err
 	}
 	core := newSDKClient(coreURL, opts)
-	read := core
-	if opts.Origin != "" {
-		originURL, err := parseOrigin(opts.Origin)
+	var cdn *url.URL
+	if opts.CDNDomain != "" {
+		cdn, err = parseCDNDomain(opts.CDNDomain)
 		if err != nil {
-			return nil, fmt.Errorf("invalid COS_ORIGIN_DOMAIN %q: %w", opts.Origin, err)
+			return nil, fmt.Errorf("invalid COS_CDN_DOMAIN %q: %w", opts.CDNDomain, err)
 		}
-		read = newSDKClient(originURL, opts)
 	}
-	return &Client{core: core, read: read, id: opts.SecretID, key: opts.SecretKey, expires: opts.URLExpires}, nil
+	return &Client{core: core, cdn: cdn, id: opts.SecretID, key: opts.SecretKey, expires: opts.URLExpires}, nil
 }
 
 func newSDKClient(bucketURL *url.URL, opts Options) *cos.Client {
@@ -118,9 +118,9 @@ func defaultBucketURL(bucket, region string) (*url.URL, error) {
 	return u, nil
 }
 
-// parseOrigin 规范化自定义源站域名：缺省补 https、去掉末尾斜杠，并拒绝
-// 带路径/查询/用户信息或非 http(s) 的值（COS 自定义源站域名只接受主机名）。
-func parseOrigin(raw string) (*url.URL, error) {
+// parseCDNDomain 规范化 CDN 域名：缺省补 https、去掉末尾斜杠，并拒绝
+// 带路径/查询/用户信息或非 http(s) 的值（读取地址只接受主机名）。
+func parseCDNDomain(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.Contains(raw, "://") {
 		raw = "https://" + raw
@@ -141,8 +141,7 @@ func parseOrigin(raw string) (*url.URL, error) {
 	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("path, query and fragment are not allowed")
 	}
-	// DNS 主机名不区分大小写，但签名按字符串比较：统一小写，避免浏览器
-	// 发送的 Host 与签名 Host 大小写不一致导致 403。
+	// DNS 主机名不区分大小写，统一小写便于日志与缓存键一致。
 	u.Host = strings.ToLower(u.Host)
 	u.Path = ""
 	u.RawQuery = ""
@@ -153,13 +152,17 @@ func parseOrigin(raw string) (*url.URL, error) {
 func (c *Client) Enabled() bool { return true }
 
 func (c *Client) SignPUT(key, contentType string) (string, time.Time, error) {
-	// 上传始终直连 COS 默认域名：自定义源站只承担读取，避免写操作依赖
-	// 可能由 CDN/只读网关提供的自定义域名。
+	// 上传始终直连 COS 默认域名：CDN 只承担读取，写操作不依赖 CDN。
 	return c.presign(c.core, http.MethodPut, key, contentType, nil)
 }
 
+// SignGET 返回原图读取地址；配置 CDN 时为无签名 URL，否则为默认域名的
+// 短时效签名 URL。
 func (c *Client) SignGET(key string) (string, error) {
-	signed, _, err := c.presign(c.read, http.MethodGet, key, "", nil)
+	if c.cdn != nil {
+		return c.cdnURL(key, ""), nil
+	}
+	signed, _, err := c.presign(c.core, http.MethodGet, key, "", nil)
 	return signed, err
 }
 
@@ -171,22 +174,36 @@ const thumbOp = "imageMogr2/thumbnail/1400x"
 // 每张通常只有几百 KB。`>` 后缀是 COS 的“仅缩小”语义。
 const previewOp = "imageMogr2/thumbnail/2400x2400>"
 
-// SignGETThumb 生成签入缩放处理参数的短时效缩略图 URL。
+// SignGETThumb 生成缩略图 URL：配置 CDN 时无签名，否则签入缩放处理参数。
 // 私有读桶下处理参数必须在签名时携带；签名后再拼到 URL 上会被 COS 校验
 // 判为参数与签名不符（403 SignatureDoesNotMatch），不能在客户端追加。
 func (c *Client) SignGETThumb(key string) (string, error) {
 	return c.signProcessed(key, thumbOp)
 }
 
-// SignGETPreview 生成签入显示尺寸缩放参数的短时效 URL（灯箱用）。
+// SignGETPreview 生成灯箱显示尺寸 URL：配置 CDN 时无签名，否则签入处理参数。
 func (c *Client) SignGETPreview(key string) (string, error) {
 	return c.signProcessed(key, previewOp)
 }
 
 func (c *Client) signProcessed(key, op string) (string, error) {
+	if c.cdn != nil {
+		return c.cdnURL(key, op), nil
+	}
 	q := url.Values{op: {""}}
-	signed, _, err := c.presign(c.read, http.MethodGet, key, "", &q)
+	signed, _, err := c.presign(c.core, http.MethodGet, key, "", &q)
 	return signed, err
+}
+
+// cdnURL 拼接无签名读取地址。对象 Key 由服务端生成，这里仍交给 net/url
+// 做路径转义，避免特殊字符构造出意外 URL；处理参数按 COS/CDN 约定的字面量
+// 斜杠形式下发（imageMogr2/thumbnail/...），仅把 `>` 转义为 %3E。
+func (c *Client) cdnURL(key, op string) string {
+	u := *c.cdn
+	u.Path = "/" + strings.TrimPrefix(key, "/")
+	u.RawPath = ""
+	u.RawQuery = strings.ReplaceAll(op, ">", "%3E")
+	return u.String()
 }
 
 func (c *Client) presign(cl *cos.Client, method, objectKey, contentType string, query *url.Values) (string, time.Time, error) {

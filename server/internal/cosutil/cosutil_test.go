@@ -7,18 +7,18 @@ import (
 	"time"
 )
 
-func newTestClient(t *testing.T, origin string) *Client {
+func newTestClient(t *testing.T, cdn string) *Client {
 	t.Helper()
 	c, err := New(Options{
 		SecretID:   "AKIDtest",
 		SecretKey:  "secret",
 		Region:     "ap-guangzhou",
 		Bucket:     "keepsake-1250000000",
-		Origin:     origin,
+		CDNDomain:  cdn,
 		URLExpires: 15 * time.Minute,
 	})
 	if err != nil {
-		t.Fatalf("New(origin=%q): %v", origin, err)
+		t.Fatalf("New(cdn=%q): %v", cdn, err)
 	}
 	return c
 }
@@ -65,56 +65,101 @@ func TestSignProcessedURLs(t *testing.T) {
 	}
 }
 
-// 未配置源站时保持原有行为：读写都使用 COS 默认域名。
-func TestDefaultBucketURL(t *testing.T) {
+// 未配置 CDN 时保持私有桶行为：读取仍使用 COS 默认域名的短时效签名 URL。
+func TestNoCDNKeepsSignedReads(t *testing.T) {
 	c := newTestClient(t, "")
 
-	for name, u := range map[string]*url.URL{"core": c.core.BaseURL.BucketURL, "read": c.read.BaseURL.BucketURL} {
-		if u.Scheme != "https" {
-			t.Fatalf("%s scheme = %q, want https", name, u.Scheme)
-		}
-		if want := "keepsake-1250000000.cos.ap-guangzhou.myqcloud.com"; u.Host != want {
-			t.Fatalf("%s host = %q, want %q", name, u.Host, want)
-		}
+	u := c.core.BaseURL.BucketURL
+	if u.Scheme != "https" {
+		t.Fatalf("scheme = %q, want https", u.Scheme)
+	}
+	if want := "keepsake-1250000000.cos.ap-guangzhou.myqcloud.com"; u.Host != want {
+		t.Fatalf("host = %q, want %q", u.Host, want)
+	}
+	if c.cdn != nil {
+		t.Fatalf("cdn = %v, want nil", c.cdn)
+	}
+
+	signed, err := c.SignGET("trips/t1/202608/a.jpg")
+	if err != nil {
+		t.Fatalf("SignGET: %v", err)
+	}
+	q := mustQuery(t, signed)
+	if q.Get("q-signature") == "" || q.Get("q-header-list") != "host" {
+		t.Fatalf("read url should be signed against COS host: %s", signed)
 	}
 }
 
-// 自定义源站只接管读取：GET 预签名指向源站并签入 Host；
+// 配置 CDN 后读取不再签名：原图/缩略图/灯箱直接指向 CDN；
 // 上传 PUT（以及 HEAD/DELETE 使用的 core）仍是 COS 默认域名。
-func TestCustomOriginForReadsOnly(t *testing.T) {
-	const origin = "photos.example.com"
+func TestCDNReadsAreUnsigned(t *testing.T) {
+	const cdn = "photos.example.com"
 	const defaultHost = "keepsake-1250000000.cos.ap-guangzhou.myqcloud.com"
-	c := newTestClient(t, origin)
+	c := newTestClient(t, cdn)
 
 	if got := c.core.BaseURL.BucketURL.Host; got != defaultHost {
 		t.Fatalf("core host = %q, want default %q", got, defaultHost)
 	}
-	if got := c.read.BaseURL.BucketURL.Host; got != origin {
-		t.Fatalf("read host = %q, want %q", got, origin)
+	if c.cdn == nil || c.cdn.Host != cdn {
+		t.Fatalf("cdn = %v, want host %q", c.cdn, cdn)
 	}
 
 	key := "trips/t1/202608/a.jpg"
 	readURLs := map[string]string{}
-	for name, sign := range map[string]func(string) (string, error){
+	for name, read := range map[string]func(string) (string, error){
 		"get":     c.SignGET,
 		"thumb":   c.SignGETThumb,
 		"preview": c.SignGETPreview,
 	} {
-		signed, err := sign(key)
+		raw, err := read(key)
 		if err != nil {
-			t.Fatalf("%s sign: %v", name, err)
+			t.Fatalf("%s: %v", name, err)
 		}
-		readURLs[name] = signed
-		u, err := url.Parse(signed)
-		if err != nil {
-			t.Fatalf("%s parse: %v", name, err)
+		readURLs[name] = raw
+		u := mustParse(t, raw)
+		if u.Host != cdn {
+			t.Fatalf("%s host = %q, want %q", name, u.Host, cdn)
 		}
-		if u.Host != origin {
-			t.Fatalf("%s host = %q, want %q", name, u.Host, origin)
+		if u.Path != "/"+key {
+			t.Fatalf("%s path = %q, want %q", name, u.Path, "/"+key)
+		}
+		for _, signedParam := range []string{
+			"q-signature", "q-sign-time", "q-key-time", "q-header-list", "q-url-param-list",
+		} {
+			if got := u.Query().Get(signedParam); got != "" {
+				t.Fatalf("%s url unexpectedly carries %s=%q: %s", name, signedParam, got, raw)
+			}
 		}
 	}
-	if got := mustQuery(t, readURLs["preview"]).Get("q-header-list"); got != "host" {
-		t.Fatalf("q-header-list = %q, want host (custom origin must be signed)", got)
+
+	if want := "https://" + cdn + "/" + key; readURLs["get"] != want {
+		t.Fatalf("get url = %q, want %q (no query)", readURLs["get"], want)
+	}
+	// 处理参数保持 COS/CDN 约定的字面量斜杠形式；`>` 按 URL 规范转义为 %3E。
+	if want := "https://" + cdn + "/" + key + "?" + thumbOp; readURLs["thumb"] != want {
+		t.Fatalf("thumb url = %q, want %q", readURLs["thumb"], want)
+	}
+	wantPreviewOp := strings.ReplaceAll(previewOp, ">", "%3E")
+	if want := "https://" + cdn + "/" + key + "?" + wantPreviewOp; readURLs["preview"] != want {
+		t.Fatalf("preview url = %q, want %q", readURLs["preview"], want)
+	}
+	if _, ok := mustQuery(t, readURLs["thumb"])[thumbOp]; !ok {
+		t.Fatalf("thumb url missing op %q: %s", thumbOp, readURLs["thumb"])
+	}
+	if _, ok := mustQuery(t, readURLs["preview"])[previewOp]; !ok {
+		t.Fatalf("preview url missing op %q: %s", previewOp, readURLs["preview"])
+	}
+	if readURLs["thumb"] == readURLs["preview"] {
+		t.Fatal("thumb and preview must differ (different processing params)")
+	}
+
+	// 无签名 URL 不随时间变化，便于浏览器/CDN 缓存。
+	again, err := c.SignGETPreview(key)
+	if err != nil {
+		t.Fatalf("SignGETPreview again: %v", err)
+	}
+	if again != readURLs["preview"] {
+		t.Fatalf("CDN read urls should be deterministic: %q != %q", again, readURLs["preview"])
 	}
 
 	uploadURL, _, err := c.SignPUT(key, "image/jpeg")
@@ -124,14 +169,8 @@ func TestCustomOriginForReadsOnly(t *testing.T) {
 	if u := mustParse(t, uploadURL); u.Host != defaultHost {
 		t.Fatalf("upload host = %q, want default %q", u.Host, defaultHost)
 	}
-
-	// Host 是签名串的一部分：读取换源站后同一对象的签名必须与默认域名不同。
-	def, err := newTestClient(t, "").SignGETPreview(key)
-	if err != nil {
-		t.Fatalf("default SignGETPreview: %v", err)
-	}
-	if mustQuery(t, def).Get("q-signature") == mustQuery(t, readURLs["preview"]).Get("q-signature") {
-		t.Fatal("signature must differ when the read origin host differs")
+	if mustQuery(t, uploadURL).Get("q-signature") == "" {
+		t.Fatalf("upload url must stay signed: %s", uploadURL)
 	}
 }
 
@@ -149,10 +188,10 @@ func mustQuery(t *testing.T, raw string) url.Values {
 	return mustParse(t, raw).Query()
 }
 
-func TestCustomOriginNormalization(t *testing.T) {
+func TestCDNDomainNormalization(t *testing.T) {
 	tests := []struct {
 		name     string
-		origin   string
+		cdn      string
 		wantHost string
 	}{
 		{"裸域名补 https", "photos.example.com", "photos.example.com"},
@@ -162,37 +201,40 @@ func TestCustomOriginNormalization(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c := newTestClient(t, tc.origin)
-			u := c.read.BaseURL.BucketURL
+			c := newTestClient(t, tc.cdn)
+			u := c.cdn
+			if u == nil {
+				t.Fatal("cdn url is nil")
+			}
 			if u.Host != tc.wantHost {
 				t.Fatalf("host = %q, want %q", u.Host, tc.wantHost)
 			}
 			if u.Path != "" {
-				t.Fatalf("path = %q, want empty (origin has no path prefix)", u.Path)
+				t.Fatalf("path = %q, want empty (cdn domain has no path prefix)", u.Path)
 			}
 		})
 	}
 }
 
-func TestInvalidCustomOrigin(t *testing.T) {
-	for _, origin := range []string{
+func TestInvalidCDNDomain(t *testing.T) {
+	for _, cdn := range []string{
 		"https://photos.example.com/prefix",
 		"ftp://photos.example.com",
 		"https://user:pass@photos.example.com",
 		"https://photos.example.com?x=1",
 		"https://",
 	} {
-		t.Run(origin, func(t *testing.T) {
+		t.Run(cdn, func(t *testing.T) {
 			_, err := New(Options{
 				SecretID:   "AKIDtest",
 				SecretKey:  "secret",
 				Region:     "ap-guangzhou",
 				Bucket:     "keepsake-1250000000",
-				Origin:     origin,
+				CDNDomain:  cdn,
 				URLExpires: 15 * time.Minute,
 			})
 			if err == nil {
-				t.Fatalf("New(origin=%q) should fail", origin)
+				t.Fatalf("New(cdn=%q) should fail", cdn)
 			}
 		})
 	}

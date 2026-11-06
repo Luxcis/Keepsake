@@ -250,7 +250,7 @@ func validTakenAt(s string) bool {
 	return err == nil
 }
 
-// GET /api/trips/{id}/photos —— 门禁后：真实元数据 + 短时效签名 URL。
+// GET /api/trips/{id}/photos —— 门禁后：真实元数据 + 读取 URL（CDN 无签名或短时效签名）。
 // enabled=false（存储后端未配置）时返回空 URL 让前端给出提示（不影响旅行页面其它信息）。
 // 仅已发布旅行（公开门禁语义）；管理端走 adminListTripPhotos。
 func (h *Handlers) listTripPhotos(w http.ResponseWriter, r *http.Request) {
