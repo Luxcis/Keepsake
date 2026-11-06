@@ -1,15 +1,56 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useSiteStore } from '@/stores/site'
 import { bindMotion } from '@/compositions/motion'
+import { api, type RandomPhoto, type RandomPhotoResponse } from '@/api/client'
 
 // 首页（计划 §2）：主视觉 + 祝福 + 通往足迹的 CTA。
+// 照片位从全部已发布旅行照片中随机挑选（每次打开重新抽取），失败时保留渐变占位。
 // 动效：首屏文案渐入（GSAP 动态加载；reduced-motion/加载失败 → CSS 静态呈现）。
 const site = useSiteStore()
 const root = ref<HTMLElement | null>(null)
 let ctx: { revert(): void } | null = null
 
+const photos = ref<RandomPhoto[]>([])
+// 加载失败的图片按 id 剔除，占位随之回退，避免出现破图。
+const failedIds = ref<string[]>([])
+
+function onImageError(photo: RandomPhoto | null) {
+  if (!photo || failedIds.value.includes(photo.id)) return
+  failedIds.value = [...failedIds.value, photo.id]
+}
+
+function usable(index: number): RandomPhoto | null {
+  const photo = photos.value[index]
+  return photo && !failedIds.value.includes(photo.id) ? photo : null
+}
+
+// 第 1 张给主视觉背景，第 2、3 张给简介拼贴；缺位保持渐变占位。
+const heroPhoto = computed(() => usable(0))
+const decoPhotoA = computed(() => usable(1))
+const decoPhotoB = computed(() => usable(2))
+
+// 主视觉优先灯箱尺寸预览，简介卡片优先缩略图；都为空时不渲染图片。
+function heroSrc(photo: RandomPhoto | null) {
+  return photo?.preview_src || photo?.src || ''
+}
+function cardSrc(photo: RandomPhoto | null) {
+  return photo?.thumb_src || photo?.preview_src || photo?.src || ''
+}
+
+async function loadRandomPhotos() {
+  try {
+    const data = await api.get<RandomPhotoResponse>('/api/photos/random?limit=3')
+    photos.value = data.photos ?? []
+  } catch {
+    // 门禁未解锁或接口异常：静默回退渐变占位，不打断首页其它内容。
+    photos.value = []
+  }
+}
+
 onMounted(async () => {
+  // 随机照片与动效互不阻塞：照片就绪后再由浏览器填充图片。
+  void loadRandomPhotos()
   const bound = await bindMotion(root)
   if (!bound) return
   ctx = bound.modules.gsap.context(() => {
@@ -46,7 +87,16 @@ onBeforeUnmount(() => ctx?.revert())
 <template>
   <section ref="root" class="pt-[74px]">
     <div class="hero relative min-h-[620px] md:min-h-[680px] flex items-end">
-      <div class="hero-canvas absolute inset-0" aria-hidden="true"></div>
+      <div class="hero-canvas absolute inset-0" aria-hidden="true">
+        <img
+          v-if="heroSrc(heroPhoto)"
+          :src="heroSrc(heroPhoto)"
+          alt=""
+          class="absolute inset-0 h-full w-full object-cover"
+          @error="onImageError(heroPhoto)"
+        />
+        <div v-if="heroSrc(heroPhoto)" class="hero-photo-scrim absolute inset-0"></div>
+      </div>
       <div class="max-w-7xl mx-auto w-full px-6 md:px-12 pb-16 md:pb-24 text-[#f8f4eb] relative">
         <div class="max-w-2xl">
           <p class="eyebrow !text-[#e5c9a4] mb-6 hero-anim">{{ site.state.settings.hero_kicker }}</p>
@@ -99,9 +149,27 @@ onBeforeUnmount(() => ctx?.revert())
         </p>
       </div>
       <div class="deco-anim grid grid-cols-5 gap-3 items-center">
-        <div class="col-span-3 photo-card rounded-sm aspect-[4/5] hero-deco-1"></div>
+        <div class="col-span-3 photo-card rounded-sm aspect-[4/5] hero-deco-1">
+          <img
+            v-if="cardSrc(decoPhotoA)"
+            :src="cardSrc(decoPhotoA)"
+            alt=""
+            loading="lazy"
+            class="h-full w-full object-cover"
+            @error="onImageError(decoPhotoA)"
+          />
+        </div>
         <div class="col-span-2 space-y-3">
-          <div class="photo-card aspect-[4/5] rounded-sm hero-deco-2"></div>
+          <div class="photo-card aspect-[4/5] rounded-sm hero-deco-2">
+            <img
+              v-if="cardSrc(decoPhotoB)"
+              :src="cardSrc(decoPhotoB)"
+              alt=""
+              loading="lazy"
+              class="h-full w-full object-cover"
+              @error="onImageError(decoPhotoB)"
+            />
+          </div>
           <div class="bg-[#e8e3d8] p-4 md:p-5">
             <span class="eyebrow">LITTLE MOMENTS</span>
             <p class="section-title text-xl mt-2">平凡日子<br />也闪闪发光。</p>
@@ -117,6 +185,19 @@ onBeforeUnmount(() => ctx?.revert())
   background:
     linear-gradient(160deg, rgba(19, 35, 33, 0.72), rgba(19, 35, 33, 0.08) 65%),
     linear-gradient(135deg, #3d5348 0%, #4f6a5d 38%, #b58d62 78%, #d9c097 100%);
+}
+/* 有照片时用深色遮罩压在照片上：照片明暗不可控，底部加重保证首屏文字对比度；
+   图片加载失败会被移除，回退到渐变背景。 */
+.hero-photo-scrim {
+  background:
+    linear-gradient(to top, rgba(19, 35, 33, 0.88) 0%, rgba(19, 35, 33, 0.45) 42%, rgba(19, 35, 33, 0.15) 100%),
+    linear-gradient(115deg, rgba(19, 35, 33, 0.55), rgba(19, 35, 33, 0) 70%);
+}
+.photo-card img {
+  transition: transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.photo-card:hover img {
+  transform: scale(1.045);
 }
 .photo-card.hero-deco-1 {
   background-image: linear-gradient(150deg, rgba(38, 60, 59, 0.35), rgba(38, 60, 59, 0.08)),

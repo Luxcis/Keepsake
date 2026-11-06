@@ -326,6 +326,60 @@ func (h *Handlers) servePhotos(w http.ResponseWriter, r *http.Request, tripID st
 	Data(w, http.StatusOK, map[string]any{"enabled": enabled, "photos": out})
 }
 
+// 首页随机照片条数约束：默认一次取 3 张（主视觉 1 张 + 简介拼贴 2 张）。
+const (
+	defaultRandomPhotoLimit = 3
+	maxRandomPhotoLimit     = 12
+)
+
+// randomPhotoLimit 解析 limit 查询参数；空值、非法值或越界值回落默认条数。
+func randomPhotoLimit(raw string) int {
+	if raw == "" {
+		return defaultRandomPhotoLimit
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || n > maxRandomPhotoLimit {
+		return defaultRandomPhotoLimit
+	}
+	return n
+}
+
+// GET /api/photos/random —— 门禁后：跨全部已发布旅行随机返回照片，供首页展示。
+// 只包含照片条目（不含独立视频）；响应禁止缓存，保证每次打开首页重新抽取。
+func (h *Handlers) listRandomPhotos(w http.ResponseWriter, r *http.Request) {
+	photos, err := h.st.ListRandomPhotos(r.Context(), randomPhotoLimit(r.URL.Query().Get("limit")))
+	if err != nil {
+		mapStoreErr(w, err)
+		return
+	}
+
+	enabled := h.cos.Enabled()
+	out := []map[string]any{}
+	for _, p := range photos {
+		row := map[string]any{
+			"id": p.ID, "trip_id": p.TripID, "trip_title": p.TripTitle,
+			"title": p.Title, "taken_at": nilOrValue(p.TakenAt.Valid, p.TakenAt.String),
+			"src": "", "preview_src": "", "thumb_src": "",
+		}
+		if enabled {
+			src, serr := h.cos.SignGET(p.COSKey)
+			if serr != nil {
+				slog.Warn("random photo sign get failed", "key", p.COSKey, "err", serr)
+				src = ""
+			}
+			if src != "" {
+				row["thumb_src"] = h.signThumb(p.COSKey, p.ThumbnailKey)
+				row["preview_src"] = h.signPreview(p.COSKey)
+			}
+			row["src"] = src
+		}
+		out = append(out, row)
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	Data(w, http.StatusOK, map[string]any{"enabled": enabled, "photos": out})
+}
+
 // signThumb 签名照片缩略图 URL：优先独立缩略图对象；否则把缩放处理参数
 // 签入原图 GET URL —— 处理参数必须参与签名，签名后追加会被 COS 校验拒绝（403）。
 // 失败时返回空串并记 warn（photo sign 语义：不阻断内容响应）。

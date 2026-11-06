@@ -42,6 +42,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/trips", h.listTrips)
 		r.Get("/trips/{id}", h.getTrip)
 		r.Get("/trips/{id}/photos", h.listTripPhotos)
+		r.Get("/photos/random", h.listRandomPhotos)
 		r.Get("/letter", h.getLetter)
 	})
 
