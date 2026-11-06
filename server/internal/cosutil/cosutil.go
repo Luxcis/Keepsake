@@ -60,7 +60,10 @@ type Backend interface {
 
 // Client 基于 COS Go SDK 的 Backend 实现。
 type Client struct {
+	// core 使用 COS 默认域名：上传签名、HEAD 校验与删除。
 	core *cos.Client
+	// read 使用自定义源站域名，仅负责读取类预签名；未配置源站时与 core 相同。
+	read *cos.Client
 	// id/key 只用于预签名计算，不出现在日志或响应（计划 §5.1）。
 	id, key string
 	expires time.Duration
@@ -73,8 +76,9 @@ type Options struct {
 	Region    string
 	Bucket    string
 	// Origin 是可选的自定义源站域名（COS 控制台「自定义源站域名」）。
-	// 支持 example.com 或 https://example.com（默认 https，端口可保留）。
-	// 为空时使用 https://{bucket}.cos.{region}.myqcloud.com。
+	// 仅用于读取类预签名 URL（原图/缩略图/灯箱）；上传 PUT、HEAD 校验与
+	// 删除始终使用 COS 默认域名。支持 example.com 或 https://example.com
+	// （默认 https，端口可保留）；为空时读取也使用默认域名。
 	// 预签名会按该域名计算 Host，因此域名必须已 CNAME 到该桶且 COS 能按此
 	// Host 校验签名；CDN 加速域名与带路径前缀的域名不适用。
 	Origin     string
@@ -84,29 +88,32 @@ type Options struct {
 // New 根据配置构建 SDK 客户端；region 形如 ap-guangzhou。
 // 自定义源站域名非法时返回错误（启动即失败，避免上线后才发现签名 403）。
 func New(opts Options) (*Client, error) {
-	bucketURL, err := bucketURL(opts.Bucket, opts.Region, opts.Origin)
+	coreURL, err := defaultBucketURL(opts.Bucket, opts.Region)
 	if err != nil {
 		return nil, err
 	}
-	b := &cos.BaseURL{BucketURL: bucketURL}
-	core := cos.NewClient(b, &http.Client{
-		Transport: &cos.AuthorizationTransport{SecretID: opts.SecretID, SecretKey: opts.SecretKey},
-	})
-	return &Client{core: core, id: opts.SecretID, key: opts.SecretKey, expires: opts.URLExpires}, nil
+	core := newSDKClient(coreURL, opts)
+	read := core
+	if opts.Origin != "" {
+		originURL, err := parseOrigin(opts.Origin)
+		if err != nil {
+			return nil, fmt.Errorf("invalid COS_ORIGIN_DOMAIN %q: %w", opts.Origin, err)
+		}
+		read = newSDKClient(originURL, opts)
+	}
+	return &Client{core: core, read: read, id: opts.SecretID, key: opts.SecretKey, expires: opts.URLExpires}, nil
 }
 
-// bucketURL 生成 BucketURL：优先使用自定义源站域名，否则回落到 COS 默认域名。
-func bucketURL(bucket, region, origin string) (*url.URL, error) {
-	if origin == "" {
-		u, err := url.Parse(fmt.Sprintf("https://%s.cos.%s.myqcloud.com", bucket, region))
-		if err != nil {
-			return nil, fmt.Errorf("parse cos bucket url (bucket=%q region=%q): %w", bucket, region, err)
-		}
-		return u, nil
-	}
-	u, err := parseOrigin(origin)
+func newSDKClient(bucketURL *url.URL, opts Options) *cos.Client {
+	return cos.NewClient(&cos.BaseURL{BucketURL: bucketURL}, &http.Client{
+		Transport: &cos.AuthorizationTransport{SecretID: opts.SecretID, SecretKey: opts.SecretKey},
+	})
+}
+
+func defaultBucketURL(bucket, region string) (*url.URL, error) {
+	u, err := url.Parse(fmt.Sprintf("https://%s.cos.%s.myqcloud.com", bucket, region))
 	if err != nil {
-		return nil, fmt.Errorf("invalid COS_ORIGIN_DOMAIN %q: %w", origin, err)
+		return nil, fmt.Errorf("parse cos bucket url (bucket=%q region=%q): %w", bucket, region, err)
 	}
 	return u, nil
 }
@@ -146,11 +153,13 @@ func parseOrigin(raw string) (*url.URL, error) {
 func (c *Client) Enabled() bool { return true }
 
 func (c *Client) SignPUT(key, contentType string) (string, time.Time, error) {
-	return c.presign(http.MethodPut, key, contentType, nil)
+	// 上传始终直连 COS 默认域名：自定义源站只承担读取，避免写操作依赖
+	// 可能由 CDN/只读网关提供的自定义域名。
+	return c.presign(c.core, http.MethodPut, key, contentType, nil)
 }
 
 func (c *Client) SignGET(key string) (string, error) {
-	signed, _, err := c.presign(http.MethodGet, key, "", nil)
+	signed, _, err := c.presign(c.read, http.MethodGet, key, "", nil)
 	return signed, err
 }
 
@@ -176,11 +185,11 @@ func (c *Client) SignGETPreview(key string) (string, error) {
 
 func (c *Client) signProcessed(key, op string) (string, error) {
 	q := url.Values{op: {""}}
-	signed, _, err := c.presign(http.MethodGet, key, "", &q)
+	signed, _, err := c.presign(c.read, http.MethodGet, key, "", &q)
 	return signed, err
 }
 
-func (c *Client) presign(method, objectKey, contentType string, query *url.Values) (string, time.Time, error) {
+func (c *Client) presign(cl *cos.Client, method, objectKey, contentType string, query *url.Values) (string, time.Time, error) {
 	expireAt := time.Now().Add(c.expires)
 	opt := &cos.PresignedURLOptions{}
 	if contentType != "" {
@@ -195,7 +204,7 @@ func (c *Client) presign(method, objectKey, contentType string, query *url.Value
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	signed, err := c.core.Object.GetPresignedURL(ctx, method, objectKey,
+	signed, err := cl.Object.GetPresignedURL(ctx, method, objectKey,
 		c.id, c.key, time.Until(expireAt), opt)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("presign %s %s: %w", method, objectKey, err)

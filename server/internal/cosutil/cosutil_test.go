@@ -65,54 +65,88 @@ func TestSignProcessedURLs(t *testing.T) {
 	}
 }
 
-// 未配置源站时保持原有行为：使用 COS 默认域名。
+// 未配置源站时保持原有行为：读写都使用 COS 默认域名。
 func TestDefaultBucketURL(t *testing.T) {
 	c := newTestClient(t, "")
 
-	u := c.core.BaseURL.BucketURL
-	if u.Scheme != "https" {
-		t.Fatalf("scheme = %q, want https", u.Scheme)
-	}
-	if want := "keepsake-1250000000.cos.ap-guangzhou.myqcloud.com"; u.Host != want {
-		t.Fatalf("host = %q, want %q", u.Host, want)
+	for name, u := range map[string]*url.URL{"core": c.core.BaseURL.BucketURL, "read": c.read.BaseURL.BucketURL} {
+		if u.Scheme != "https" {
+			t.Fatalf("%s scheme = %q, want https", name, u.Scheme)
+		}
+		if want := "keepsake-1250000000.cos.ap-guangzhou.myqcloud.com"; u.Host != want {
+			t.Fatalf("%s host = %q, want %q", name, u.Host, want)
+		}
 	}
 }
 
-// 自定义源站域名同时作用于 SDK 请求地址与预签名 URL，且 Host 参与签名。
-func TestCustomOrigin(t *testing.T) {
+// 自定义源站只接管读取：GET 预签名指向源站并签入 Host；
+// 上传 PUT（以及 HEAD/DELETE 使用的 core）仍是 COS 默认域名。
+func TestCustomOriginForReadsOnly(t *testing.T) {
 	const origin = "photos.example.com"
+	const defaultHost = "keepsake-1250000000.cos.ap-guangzhou.myqcloud.com"
 	c := newTestClient(t, origin)
 
-	bu := c.core.BaseURL.BucketURL
-	if bu.Scheme != "https" || bu.Host != origin {
-		t.Fatalf("bucket url = %s, want https://%s", bu, origin)
+	if got := c.core.BaseURL.BucketURL.Host; got != defaultHost {
+		t.Fatalf("core host = %q, want default %q", got, defaultHost)
+	}
+	if got := c.read.BaseURL.BucketURL.Host; got != origin {
+		t.Fatalf("read host = %q, want %q", got, origin)
 	}
 
 	key := "trips/t1/202608/a.jpg"
-	signed, err := c.SignGETPreview(key)
-	if err != nil {
-		t.Fatalf("SignGETPreview: %v", err)
+	readURLs := map[string]string{}
+	for name, sign := range map[string]func(string) (string, error){
+		"get":     c.SignGET,
+		"thumb":   c.SignGETThumb,
+		"preview": c.SignGETPreview,
+	} {
+		signed, err := sign(key)
+		if err != nil {
+			t.Fatalf("%s sign: %v", name, err)
+		}
+		readURLs[name] = signed
+		u, err := url.Parse(signed)
+		if err != nil {
+			t.Fatalf("%s parse: %v", name, err)
+		}
+		if u.Host != origin {
+			t.Fatalf("%s host = %q, want %q", name, u.Host, origin)
+		}
 	}
-	u, err := url.Parse(signed)
-	if err != nil {
-		t.Fatalf("parse preview url: %v", err)
-	}
-	if u.Host != origin {
-		t.Fatalf("signed host = %q, want %q", u.Host, origin)
-	}
-	if got := u.Query().Get("q-header-list"); got != "host" {
+	if got := mustQuery(t, readURLs["preview"]).Get("q-header-list"); got != "host" {
 		t.Fatalf("q-header-list = %q, want host (custom origin must be signed)", got)
 	}
 
-	// Host 是签名串的一部分：换源站后同一对象的签名必须不同。
-	defSigned, err := newTestClient(t, "").SignGETPreview(key)
+	uploadURL, _, err := c.SignPUT(key, "image/jpeg")
+	if err != nil {
+		t.Fatalf("SignPUT: %v", err)
+	}
+	if u := mustParse(t, uploadURL); u.Host != defaultHost {
+		t.Fatalf("upload host = %q, want default %q", u.Host, defaultHost)
+	}
+
+	// Host 是签名串的一部分：读取换源站后同一对象的签名必须与默认域名不同。
+	def, err := newTestClient(t, "").SignGETPreview(key)
 	if err != nil {
 		t.Fatalf("default SignGETPreview: %v", err)
 	}
-	du, _ := url.Parse(defSigned)
-	if u.Query().Get("q-signature") == du.Query().Get("q-signature") {
-		t.Fatal("signature must differ when the origin host differs")
+	if mustQuery(t, def).Get("q-signature") == mustQuery(t, readURLs["preview"]).Get("q-signature") {
+		t.Fatal("signature must differ when the read origin host differs")
 	}
+}
+
+func mustParse(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse %q: %v", raw, err)
+	}
+	return u
+}
+
+func mustQuery(t *testing.T, raw string) url.Values {
+	t.Helper()
+	return mustParse(t, raw).Query()
 }
 
 func TestCustomOriginNormalization(t *testing.T) {
@@ -129,7 +163,7 @@ func TestCustomOriginNormalization(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newTestClient(t, tc.origin)
-			u := c.core.BaseURL.BucketURL
+			u := c.read.BaseURL.BucketURL
 			if u.Host != tc.wantHost {
 				t.Fatalf("host = %q, want %q", u.Host, tc.wantHost)
 			}

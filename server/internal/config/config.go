@@ -53,8 +53,9 @@ type Config struct {
 	COSSecretKey string
 	COSRegion    string
 	COSBucket    string
-	// COSOriginDomain: 可选；COS 控制台绑定的「自定义源站域名」（如 photos.example.com）。
-	// 为空时使用默认 {bucket}.cos.{region}.myqcloud.com；预签名与 HEAD/DELETE 均走该域名。
+	// COSOriginDomain: 可选；COS 控制台绑定的「自定义源站域名」（如 photos.example.com），
+	// 仅用于读取类预签名 URL；上传 PUT、HEAD 校验与删除仍走默认域名
+	// {bucket}.cos.{region}.myqcloud.com。
 	COSOriginDomain string
 	// COSURLExpires: 预签名 URL 有效期秒数（计划 §5.1：短时效）。
 	COSURLExpires time.Duration
