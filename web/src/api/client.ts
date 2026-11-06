@@ -118,6 +118,24 @@ export interface PhotoItem {
   video_src?: string
 }
 
+// 首页随机照片条目：跨全部已发布旅行随机挑选，只用于展示。
+export interface RandomPhoto {
+  id: string
+  trip_id: string
+  trip_title: string
+  title: string
+  taken_at?: string | null
+  // 缩略图、灯箱尺寸与原图地址；存储未配置或签名失败时为空串。
+  thumb_src: string
+  preview_src: string
+  src: string
+}
+
+export interface RandomPhotoResponse {
+  enabled: boolean
+  photos: RandomPhoto[]
+}
+
 // 灯箱条目（与 PhotoLightbox 组件共享）。
 export interface LightboxPhoto {
   id?: string

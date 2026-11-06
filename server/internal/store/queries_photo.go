@@ -142,6 +142,42 @@ func (s *Store) ListPhotosByTrip(ctx context.Context, tripID string) ([]Photo, e
 	return out, rows.Err()
 }
 
+// RandomPhoto 是首页随机展示用的照片条目：照片元数据加所属旅行标题。
+type RandomPhoto struct {
+	Photo
+	TripTitle string
+}
+
+// ListRandomPhotos 从全部已发布旅行中随机返回照片条目（仅静态照片，不含独立视频）。
+// 用于首页主视觉与简介拼贴的随机挑选；页面上限由调用方传入，<=0 时返回空列表。
+func (s *Store) ListRandomPhotos(ctx context.Context, limit int) ([]RandomPhoto, error) {
+	out := []RandomPhoto{}
+	if limit <= 0 {
+		return out, nil
+	}
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT p.id, p.trip_id, p.album_id, p.cos_key, p.thumbnail_key, p.video_key, p.media_kind,
+			p.title, p.description, p.taken_at, p.width, p.height, p.sort_order, p.created_at, t.title
+		FROM photos p
+		JOIN trips t ON t.id = p.trip_id
+		WHERE t.status = 'published' AND p.media_kind = 'photo'
+		ORDER BY RANDOM()
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p RandomPhoto
+		if err := rows.Scan(&p.ID, &p.TripID, &p.AlbumID, &p.COSKey, &p.ThumbnailKey, &p.VideoKey, &p.MediaKind,
+			&p.Title, &p.Description, &p.TakenAt, &p.Width, &p.Height, &p.SortOrder, &p.CreatedAt, &p.TripTitle); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // GetPhotoKeys 查询单条媒体的归属、对象 Key 与类型，供管理端封面校验与公开封面签名共用。
 func (s *Store) GetPhotoKeys(ctx context.Context, id string) (tripID, cosKey string, thumbKey sql.NullString, mediaKind string, err error) {
 	err = s.DB.QueryRowContext(ctx,
