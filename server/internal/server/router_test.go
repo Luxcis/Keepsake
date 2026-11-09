@@ -193,6 +193,84 @@ func TestUnlockGateFlow(t *testing.T) {
 	r.expectStatus(t, http.StatusNotFound)
 }
 
+// TestSiteOpenDate：开放日期之前即使口令正确也不能解锁，且已有门禁会话被拦截；
+// 管理员会话仍可预览；清空开放日期后恢复。
+func TestSiteOpenDate(t *testing.T) {
+	d := newStack(t)
+
+	// 访客使用独立 Cookie 罐，避免被管理员会话豁免。
+	guest := visitorClient(t)
+
+	// 管理员登录（管理员会话可绕过门禁与开放日期）。
+	r := d.do(t, "POST", "/api/auth/login", `{"username":"admin","password":"secret123"}`)
+	r.expectStatus(t, http.StatusOK)
+
+	// 1) 过去的开放日期视为已开放：访客正常解锁并读取内容。
+	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2020-01-01"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "GET", "/api/trips", "")
+	r.expectStatus(t, http.StatusOK)
+
+	// 2) 改为未来日期：已持有的门禁 Cookie 也不再放行。
+	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2099-01-01"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "GET", "/api/trips", "")
+	r.expectStatus(t, http.StatusUnauthorized)
+	if code := r.errorCode(t); code != "gate_required" {
+		t.Fatalf("code = %s", code)
+	}
+
+	// 3) 正确口令 → 403 not_open_yet，提示带具体开放日期，且不发放门禁会话。
+	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r.expectStatus(t, http.StatusForbidden)
+	if code := r.errorCode(t); code != "not_open_yet" {
+		t.Fatalf("code = %s", code)
+	}
+	if !strings.Contains(string(r.body), "2099 年 1 月 1 日") {
+		t.Fatalf("message should carry open date: %s", r.body)
+	}
+
+	// 3b) 自定义未开放提示语：{date} 替换为开放日期。
+	r = d.do(t, "PUT", "/api/admin/site/settings",
+		`{"not_open_message":"先别急，{date} 再见。"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r.expectStatus(t, http.StatusForbidden)
+	if !strings.Contains(string(r.body), "先别急，2099 年 1 月 1 日 再见。") {
+		t.Fatalf("custom message = %s", r.body)
+	}
+
+	// 4) 管理员仍可预览私人内容。
+	r = d.do(t, "GET", "/api/trips", "")
+	r.expectStatus(t, http.StatusOK)
+
+	// 5) 公开设置返回 open_date，供管理端设置页回填。
+	r = d.do(t, "GET", "/api/site/settings", "")
+	r.expectStatus(t, http.StatusOK)
+	data, _ := r.decode(t)["data"].(map[string]any)
+	settings, _ := data["settings"].(map[string]any)
+	if settings["open_date"] != "2099-01-01" {
+		t.Fatalf("open_date = %v", settings["open_date"])
+	}
+	if settings["not_open_message"] != "先别急，{date} 再见。" {
+		t.Fatalf("not_open_message = %v", settings["not_open_message"])
+	}
+
+	// 6) 非法日期 → 400。
+	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2099/01/01"}`)
+	r.expectStatus(t, http.StatusBadRequest)
+
+	// 7) 清空开放日期 → 恢复解锁。
+	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":""}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "GET", "/api/trips", "")
+	r.expectStatus(t, http.StatusOK)
+}
+
 func TestAdminFullFlow(t *testing.T) {
 	d := newStack(t)
 

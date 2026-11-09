@@ -20,20 +20,38 @@ func adminFromCtx(r *http.Request) (auth.SessionData, bool) {
 
 // withGate：私人内容读接口的门禁校验（计划 §6.1：未过门禁无法读取私人内容）。
 // 管理员会话视同已解锁；站点口令未配置时视为开放模式（引导期/更新口令的过渡行为）。
+// 开放日期未到时，除管理员会话外一律拦截——已持有的门禁 Cookie 也不放行。
 func (h *Handlers) withGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if pw, gerr := h.st.GetSetting(r.Context(), "site_password"); gerr == nil && pw == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
+		pw, gerr := h.st.GetSetting(r.Context(), "site_password")
+		openMode := gerr == nil && pw == ""
 
+		// 管理员会话优先：开放日期前仍可进入前台预览与管理。
 		if hc, cerr := r.Cookie(auth.AdminCookieName); cerr == nil && hc.Value != "" {
 			data, aerr := h.svc.LoadAdmin(r.Context(), hc.Value)
-			if aerr != nil {
+			if aerr == nil {
+				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyAdmin, data)))
+				return
+			}
+			// 保持开放模式原有的宽松语义：失效的管理员 Cookie 不影响访客读取。
+			if !openMode {
 				sessionErrToHTTP(w, aerr, authRequired)
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyAdmin, data)))
+		}
+
+		open, _, serr := h.siteOpen(r.Context())
+		if serr != nil {
+			backendUnavailable(w)
+			return
+		}
+		if !open {
+			gateRequired(w)
+			return
+		}
+
+		if openMode {
+			next.ServeHTTP(w, r)
 			return
 		}
 

@@ -31,6 +31,10 @@ async function submit() {
         case 'gate_not_set':
           message.value = '访问口令尚未启用：管理员在后台设置后，这里即可输入。'
           break
+        case 'not_open_yet':
+          // 管理员设置了开放日期：日期之前即使口令正确也不解锁，文案带具体日期。
+          message.value = err.message || '还没到打开的时候哦，再耐心等一等吧。'
+          break
         default:
           message.value = err.message
       }

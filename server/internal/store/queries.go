@@ -96,12 +96,15 @@ func (s *Store) GetTrip(ctx context.Context, id string) (*Trip, []TripLocation, 
 }
 
 // SettingsWhitelist：站点配置中允许公开返回的字段（计划 §4.2）。
+// open_date 为站点开放日期（YYYY-MM-DD，空表示不限制）；
+// not_open_message 为未开放时的提示语（支持 {date} 占位符），前端设置页与锁页共用。
 var SettingsWhitelist = []string{
 	"site_title", "hero_kicker", "hero_title", "hero_subtitle", "hero_cta", "site_motto",
+	"open_date", "not_open_message",
 }
 
 // GetSiteSettings 读取白名单内的站点配置；不存在的 key 返回空字符串，
-// 白名单键固定（当前 6 个），无需一次 IN 查询，逐键读取足够简单。
+// 白名单键固定，无需一次 IN 查询，逐键读取足够简单。
 func (s *Store) GetSiteSettings(ctx context.Context) (map[string]string, error) {
 	out := make(map[string]string, len(SettingsWhitelist))
 	for _, key := range SettingsWhitelist {

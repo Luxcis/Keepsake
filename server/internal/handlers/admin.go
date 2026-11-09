@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"keepsake/internal/auth"
@@ -230,10 +231,12 @@ func (h *Handlers) putLetter(w http.ResponseWriter, r *http.Request) {
 
 // ---------- 站点设置（白名单 + 口令哈希化存储） ----------
 
-// adminWritableSettings：管理端可写字段；site_password 单独处理后哈希落库。
+// adminWritableSettings：管理端可写字段；site_password、open_date 与
+// not_open_message 在校验分支中单独处理。
 var adminWritableSettings = map[string]bool{
 	"site_title": true, "hero_kicker": true, "hero_title": true,
 	"hero_subtitle": true, "hero_cta": true, "site_motto": true,
+	"open_date": true,
 }
 
 func (h *Handlers) putSettings(w http.ResponseWriter, r *http.Request) {
@@ -260,6 +263,26 @@ func (h *Handlers) putSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			kv["site_password"] = hash
+			continue
+		}
+		if key == "open_date" {
+			// 空串表示取消开放日期限制；其余必须是合法的自然日。
+			val = strings.TrimSpace(val)
+			if val != "" && !validDate(val) {
+				err(w, http.StatusBadRequest, "bad_request", "open_date 需为 YYYY-MM-DD 有效日期（留空表示不限制）")
+				return
+			}
+			kv[key] = val
+			continue
+		}
+		if key == "not_open_message" {
+			// 空串表示使用默认提示语；{date} 会在返回时替换为开放日期。
+			val = strings.TrimSpace(val)
+			if utf8.RuneCountInString(val) > 200 {
+				err(w, http.StatusBadRequest, "bad_request", "not_open_message 过长（上限 200 字）")
+				return
+			}
+			kv[key] = val
 			continue
 		}
 		if !adminWritableSettings[key] {
