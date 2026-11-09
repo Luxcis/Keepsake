@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"keepsake/internal/auth"
+	"keepsake/internal/backup"
 	"keepsake/internal/cachex"
 	"keepsake/internal/config"
 	"keepsake/internal/localstore"
@@ -39,7 +40,19 @@ func TestLocalStorageUploadAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new local store: %v", err)
 	}
-	ts := httptest.NewServer(server.New(config.Config{Env: "dev"}, st, cachex.New(nil), ls, svc, log))
+	bk, err := backup.New(backup.Options{
+		Dir:      filepath.Join(t.TempDir(), "backups"),
+		DBName:   "test.db",
+		Env:      "dev",
+		Driver:   "local",
+		Snapshot: st.SnapshotTo,
+		Objects:  ls,
+		Log:      log,
+	})
+	if err != nil {
+		t.Fatalf("new backup service: %v", err)
+	}
+	ts := httptest.NewServer(server.New(config.Config{Env: "dev"}, st, cachex.New(nil), ls, bk, svc, log))
 	t.Cleanup(ts.Close)
 
 	const key = "trips/trip-1/202611/photo.jpg"

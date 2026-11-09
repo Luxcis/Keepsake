@@ -13,21 +13,25 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"keepsake/internal/auth"
+	"keepsake/internal/backup"
 	"keepsake/internal/cachex"
 	"keepsake/internal/config"
 	"keepsake/internal/cosutil"
+	"keepsake/internal/localstore"
 	"keepsake/internal/server"
 	"keepsake/internal/store"
 )
 
 type deps struct {
-	st   *store.Store
-	http *http.Client
-	base string
+	st        *store.Store
+	http      *http.Client
+	base      string
+	backupDir string
 	// storageRoot 是本地存储对象根目录；仅使用 localstore 的集成测试会设置。
 	storageRoot string
 }
@@ -65,7 +69,28 @@ func newStackWithBackend(t *testing.T, backend cosutil.Backend) *deps {
 	}
 
 	cfg := config.Config{Env: "dev", Port: "0"}
-	ts := httptest.NewServer(server.New(cfg, st, cachex.New(nil), backend, svc, log))
+	backupDir := filepath.Join(t.TempDir(), "backups")
+	objects, _ := backend.(cosutil.ObjectSource)
+	driver := "none"
+	switch backend.(type) {
+	case *localstore.Store:
+		driver = "local"
+	case *cosutil.Client:
+		driver = "cos"
+	}
+	bk, berr := backup.New(backup.Options{
+		Dir:      backupDir,
+		DBName:   "test.db",
+		Env:      "dev",
+		Driver:   driver,
+		Snapshot: st.SnapshotTo,
+		Objects:  objects,
+		Log:      log,
+	})
+	if berr != nil {
+		t.Fatalf("new backup service: %v", berr)
+	}
+	ts := httptest.NewServer(server.New(cfg, st, cachex.New(nil), backend, bk, svc, log))
 	t.Cleanup(ts.Close)
 
 	jar, jerr := cookiejar.New(nil)
@@ -73,9 +98,10 @@ func newStackWithBackend(t *testing.T, backend cosutil.Backend) *deps {
 		t.Fatalf("cookiejar: %v", jerr)
 	}
 	return &deps{
-		st:   st,
-		http: &http.Client{Jar: jar},
-		base: ts.URL,
+		st:        st,
+		http:      &http.Client{Jar: jar},
+		base:      ts.URL,
+		backupDir: backupDir,
 	}
 }
 

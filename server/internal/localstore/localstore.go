@@ -14,6 +14,7 @@
 package localstore
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -29,6 +30,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -184,6 +186,76 @@ func (s *Store) Delete(key string) error {
 	}
 	pruneEmptyDirs(s.root, filepath.Dir(p))
 	return nil
+}
+
+// ListObjects 遍历存储根目录，返回备份需要的对象 key 与大小。
+// 跳过上传中的临时文件、系统文件与非普通文件；.secret 等根级普通文件正常收录。
+func (s *Store) ListObjects(ctx context.Context) ([]cosutil.ObjectInfo, error) {
+	var out []cosutil.ObjectInfo
+	err := filepath.WalkDir(s.root, func(p string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		base := d.Name()
+		// .upload-* 是正在写入的临时对象；其余是本机系统文件或历史备份包，
+		// 不应进入新的备份（避免备份目录被误配到存储根时自我嵌套）。
+		if strings.HasPrefix(base, ".upload-") || strings.HasPrefix(base, ".tmp-") ||
+			base == ".DS_Store" || strings.HasPrefix(base, "keepsake-backup-") {
+			return nil
+		}
+		rel, err := filepath.Rel(s.root, p)
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		out = append(out, cosutil.ObjectInfo{Key: filepath.ToSlash(rel), Size: info.Size()})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("localstore: list objects: %w", err)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out, nil
+}
+
+// OpenObject 按 key 打开存储对象，供备份逐对象读取。
+func (s *Store) OpenObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	p, ok := s.pathFor(key)
+	if !ok {
+		return nil, fmt.Errorf("localstore: invalid key %q", key)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, cosutil.ErrObjectMissing
+		}
+		return nil, fmt.Errorf("localstore: open %s: %w", key, err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("localstore: stat %s: %w", key, err)
+	}
+	if info.IsDir() {
+		_ = f.Close()
+		return nil, cosutil.ErrObjectMissing
+	}
+	return f, nil
 }
 
 // Router 返回相对 URLPrefix 挂载的路由：/upload/*（PUT）与 /files/*（GET/HEAD）。

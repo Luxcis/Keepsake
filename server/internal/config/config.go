@@ -70,6 +70,9 @@ type Config struct {
 	StorageSecret string
 	// StorageURLExpires: 本地存储签名 URL 有效期（与 COS 预签名同语义）。
 	StorageURLExpires time.Duration
+	// BackupDir: 管理端备份包输出目录（默认 {DataDir}/backups）。
+	// 必须位于持久卷上，否则容器重建后备份文件丢失。
+	BackupDir string
 	// CORSOrigins: 开发期允许的跨域来源，逗号分隔；生产由 Nginx 同源提供，可留空。
 	CORSOrigins []string
 }
@@ -95,6 +98,7 @@ func Load() Config {
 		StorageDir:        getEnv("STORAGE_DIR", filepath.Join(dataDir, "uploads")),
 		StorageSecret:     os.Getenv("STORAGE_SECRET"),
 		StorageURLExpires: getURLExpires("STORAGE_URL_EXPIRES", 900),
+		BackupDir:         getEnv("BACKUP_DIR", filepath.Join(dataDir, "backups")),
 		CORSOrigins:       splitAndTrim(getEnv("CORS_ORIGINS", "http://localhost:5173")),
 		// 引导类变量无默认值，空即未启用（与密钥类同风格）。
 		AdminUsername:     os.Getenv("ADMIN_USERNAME"),

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"keepsake/internal/auth"
+	"keepsake/internal/backup"
 	"keepsake/internal/cachex"
 	"keepsake/internal/config"
 	"keepsake/internal/cosutil"
@@ -18,7 +19,7 @@ import (
 )
 
 // New 返回装配好中间件与路由的 http.Handler。
-func New(cfg config.Config, st *store.Store, cch *cachex.Cache, backend cosutil.Backend, svc *auth.Service, log *slog.Logger) http.Handler {
+func New(cfg config.Config, st *store.Store, cch *cachex.Cache, backend cosutil.Backend, bk *backup.Service, svc *auth.Service, log *slog.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	// 请求上下文：RequestID → RealIP → 结构化日志 → Panic 恢复。
@@ -28,7 +29,7 @@ func New(cfg config.Config, st *store.Store, cch *cachex.Cache, backend cosutil.
 		r.Use(cors(cfg.CORSOrigins))
 	}
 
-	h := handlers.New(st, cch, svc, backend, log)
+	h := handlers.New(st, cch, svc, backend, bk, log)
 
 	// 健康检查独立于 /api，便于容器/Nginx 直接探测。
 	r.Get("/healthz", h.Health)

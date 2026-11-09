@@ -22,6 +22,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"keepsake/internal/auth"
+	"keepsake/internal/backup"
 	"keepsake/internal/cachex"
 	"keepsake/internal/config"
 	"keepsake/internal/cosutil"
@@ -142,10 +143,10 @@ func bootstrapAdmin(ctx context.Context, cfg config.Config, st *store.Store, svc
 
 // ---------- 常驻服务 ----------
 
-// newStorageBackend 按 STORAGE_DRIVER 选择存储后端。
+// newStorageBackend 按 STORAGE_DRIVER 选择存储后端，并返回实际驱动名供备份清单记录。
 // 留空自动选择：COS 四项齐全 → COS；否则开发环境 → 本地磁盘；生产环境 → 禁用上传。
 // 显式 local 也可用于单机生产部署（STORAGE_DIR 必须位于持久卷上）。
-func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, error) {
+func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, string, error) {
 	driver := cfg.StorageDriver
 	if driver == "" {
 		switch {
@@ -168,14 +169,14 @@ func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, er
 			MaxBytes: config.MaxMediaUploadBytes,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("init local storage: %w", err)
+			return nil, "", fmt.Errorf("init local storage: %w", err)
 		}
 		log.Info("storage enabled", "driver", "local", "root", cfg.StorageDir,
 			"url_expires", cfg.StorageURLExpires)
-		return ls, nil
+		return ls, "local", nil
 	case "cos":
 		if !cfg.COSConfigured() {
-			return nil, errors.New("STORAGE_DRIVER=cos requires COS_SECRET_ID/COS_SECRET_KEY/COS_REGION/COS_BUCKET")
+			return nil, "", errors.New("STORAGE_DRIVER=cos requires COS_SECRET_ID/COS_SECRET_KEY/COS_REGION/COS_BUCKET")
 		}
 		client, err := cosutil.New(cosutil.Options{
 			SecretID:   cfg.COSSecretID,
@@ -186,7 +187,7 @@ func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, er
 			URLExpires: cfg.COSURLExpires,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("init cos storage: %w", err)
+			return nil, "", fmt.Errorf("init cos storage: %w", err)
 		}
 		cdn := cfg.COSCDNDomain
 		if cdn == "" {
@@ -194,12 +195,12 @@ func newStorageBackend(cfg config.Config, log *slog.Logger) (cosutil.Backend, er
 		}
 		log.Info("storage enabled", "driver", "cos", "bucket", cfg.COSBucket,
 			"region", cfg.COSRegion, "read_cdn", cdn, "url_expires", cfg.COSURLExpires)
-		return client, nil
+		return client, "cos", nil
 	case "none":
 		log.Warn("storage not configured: photo upload disabled (503); set STORAGE_DRIVER=local to use local disk")
-		return cosutil.NoopBackend{}, nil
+		return cosutil.NoopBackend{}, "none", nil
 	default:
-		return nil, fmt.Errorf("unknown STORAGE_DRIVER %q (want local or cos)", driver)
+		return nil, "", fmt.Errorf("unknown STORAGE_DRIVER %q (want local or cos)", driver)
 	}
 }
 
@@ -262,15 +263,31 @@ func run() error {
 	bootstrapAdmin(ctx, cfg, st, svc, log)
 
 	// --- 存储后端（local / COS；未配置 → NoopBackend，上传接口返回明确的 503） ---
-	storageBackend, err := newStorageBackend(cfg, log)
+	storageBackend, storageDriver, err := newStorageBackend(cfg, log)
 	if err != nil {
 		return err
 	}
 
+	// --- 备份服务（管理端一键备份：数据库快照 + 存储对象 + 清单） ---
+	objects, _ := storageBackend.(cosutil.ObjectSource)
+	backupSvc, err := backup.New(backup.Options{
+		Dir:      cfg.BackupDir,
+		DBName:   cfg.DBFile,
+		Env:      cfg.Env,
+		Driver:   storageDriver,
+		Snapshot: st.SnapshotTo,
+		Objects:  objects,
+		Log:      log,
+	})
+	if err != nil {
+		return fmt.Errorf("init backup service: %w", err)
+	}
+	log.Info("backup enabled", "dir", backupSvc.Dir(), "storage_driver", storageDriver)
+
 	// --- 删除补偿后台（计划 §4.1：对象清理失败可重试） ---
 	go func() { janitor.New(st, storageBackend).Run(ctx) }()
 
-	handler := server.New(cfg, st, cch, storageBackend, svc, log)
+	handler := server.New(cfg, st, cch, storageBackend, backupSvc, svc, log)
 	readTimeout, writeTimeout := 15*time.Second, 30*time.Second
 	if _, isLocal := storageBackend.(*localstore.Store); isLocal {
 		// 本地存储模式下媒体经 /api/storage 直传：400MB 视频在慢速上行下可能持续十余分钟，

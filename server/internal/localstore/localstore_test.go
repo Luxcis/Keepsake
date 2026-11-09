@@ -1,11 +1,14 @@
 package localstore
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -214,5 +217,62 @@ func TestSecretPersistsAcrossRestart(t *testing.T) {
 	}
 	if string(first.secret) != string(second.secret) {
 		t.Fatal("secret should persist across restarts")
+	}
+}
+
+// ListObjects 只收录普通对象文件，跳过上传临时文件与系统文件；OpenObject 可读回内容。
+func TestListAndOpenObjects(t *testing.T) {
+	root := t.TempDir()
+	s, err := New(Options{Root: root})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	writeFile := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	writeFile("trips/t1/a.jpg", "jpeg")
+	writeFile(".upload-tmp", "partial")
+	writeFile(".DS_Store", "junk")
+	writeFile("trips/t1/.tmp-keep", "temp")
+	writeFile("keepsake-backup-20260101-000000.zip", "old-backup")
+
+	objects, err := s.ListObjects(context.Background())
+	if err != nil {
+		t.Fatalf("ListObjects: %v", err)
+	}
+	got := make(map[string]int64, len(objects))
+	for _, o := range objects {
+		got[o.Key] = o.Size
+	}
+	if _, ok := got["trips/t1/a.jpg"]; !ok {
+		t.Fatalf("missing uploaded object: %v", got)
+	}
+	if _, ok := got[".secret"]; !ok {
+		t.Fatalf("root .secret should be included: %v", got)
+	}
+	for _, unwanted := range []string{".upload-tmp", ".DS_Store", "trips/t1/.tmp-keep", "keepsake-backup-20260101-000000.zip"} {
+		if _, ok := got[unwanted]; ok {
+			t.Fatalf("unexpected object %q in %v", unwanted, got)
+		}
+	}
+
+	rc, err := s.OpenObject(context.Background(), "trips/t1/a.jpg")
+	if err != nil {
+		t.Fatalf("OpenObject: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+	body, err := io.ReadAll(rc)
+	if err != nil || string(body) != "jpeg" {
+		t.Fatalf("body = %q err=%v", body, err)
+	}
+	if _, err := s.OpenObject(context.Background(), "../secret"); err == nil {
+		t.Fatal("invalid key should be rejected")
 	}
 }

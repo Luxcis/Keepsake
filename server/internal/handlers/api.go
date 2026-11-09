@@ -6,21 +6,23 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"keepsake/internal/auth"
+	"keepsake/internal/backup"
 	"keepsake/internal/cachex"
 	"keepsake/internal/cosutil"
 	"keepsake/internal/store"
 )
 
 type Handlers struct {
-	st    *store.Store
-	cache *cachex.Cache
-	svc   *auth.Service
-	cos   cosutil.Backend
-	log   *slog.Logger
+	st     *store.Store
+	cache  *cachex.Cache
+	svc    *auth.Service
+	cos    cosutil.Backend
+	backup *backup.Service
+	log    *slog.Logger
 }
 
-func New(st *store.Store, cch *cachex.Cache, svc *auth.Service, cos cosutil.Backend, log *slog.Logger) *Handlers {
-	return &Handlers{st: st, cache: cch, svc: svc, cos: cos, log: log}
+func New(st *store.Store, cch *cachex.Cache, svc *auth.Service, cos cosutil.Backend, bk *backup.Service, log *slog.Logger) *Handlers {
+	return &Handlers{st: st, cache: cch, svc: svc, cos: cos, backup: bk, log: log}
 }
 
 // Mount 挂载 /api 全部路由（计划 §4.2 API 分组）。
@@ -63,6 +65,12 @@ func (h *Handlers) Mount(r chi.Router) {
 
 		r.Put("/admin/letter", h.putLetter)
 		r.Put("/admin/site/settings", h.putSettings)
+
+		// 全量备份：创建、状态/列表、下载、删除（仅管理员）。
+		r.Get("/admin/backups", h.listBackups)
+		r.Post("/admin/backups", h.createBackup)
+		r.Get("/admin/backups/{name}", h.downloadBackup)
+		r.Delete("/admin/backups/{name}", h.deleteBackup)
 
 		r.Post("/admin/uploads/sign", h.signUpload)
 		r.Post("/admin/photos/confirm", h.confirmPhoto)

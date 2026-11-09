@@ -20,6 +20,7 @@ export const routes = [
       { path: 'trips', name: 'admin-trips', component: () => import('@/views/admin/AdminTripsView.vue'), meta: { title: '旅行管理' } },
       { path: 'photos', name: 'admin-photos', component: () => import('@/views/admin/AdminPhotosView.vue'), meta: { title: '相册与照片' } },
       { path: 'letter', name: 'admin-letter', component: () => import('@/views/admin/AdminLetterView.vue'), meta: { title: '生日信' } },
+      { path: 'backup', name: 'admin-backup', component: () => import('@/views/admin/AdminBackupView.vue'), meta: { title: '备份' } },
       { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/AdminSettingsView.vue'), meta: { title: '站点设置' } },
     ],
   },

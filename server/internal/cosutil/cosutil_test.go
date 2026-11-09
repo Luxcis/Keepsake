@@ -1,10 +1,14 @@
 package cosutil
 
 import (
+	"context"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tencentyun/cos-go-sdk-v5"
 )
 
 func newTestClient(t *testing.T, cdn string) *Client {
@@ -238,4 +242,62 @@ func TestInvalidCDNDomain(t *testing.T) {
 			}
 		})
 	}
+}
+
+// listAllObjects 必须按 NextMarker 翻页，直到 IsTruncated=false。
+func TestListAllObjectsPaginates(t *testing.T) {
+	lister := &fakeBucketLister{
+		pages: []*cos.BucketGetResult{
+			{
+				IsTruncated: true,
+				NextMarker:  "page-2",
+				Contents:    []cos.Object{{Key: "a.jpg", Size: 1}, {Key: "b.jpg", Size: 2}},
+			},
+			{
+				IsTruncated: false,
+				Contents:    []cos.Object{{Key: "c.mp4", Size: 3}},
+			},
+		},
+	}
+	objects, err := listAllObjects(context.Background(), lister)
+	if err != nil {
+		t.Fatalf("listAllObjects: %v", err)
+	}
+	if len(objects) != 3 {
+		t.Fatalf("objects = %+v", objects)
+	}
+	if objects[2].Key != "c.mp4" || objects[2].Size != 3 {
+		t.Fatalf("last object = %+v", objects[2])
+	}
+	if len(lister.markers) != 2 || lister.markers[0] != "" || lister.markers[1] != "page-2" {
+		t.Fatalf("markers = %v", lister.markers)
+	}
+}
+
+// 截断页缺少 NextMarker 时不能静默返回不完整列表。
+func TestListAllObjectsRejectsTruncatedWithoutMarker(t *testing.T) {
+	lister := &fakeBucketLister{
+		pages: []*cos.BucketGetResult{{IsTruncated: true, Contents: []cos.Object{{Key: "a.jpg", Size: 1}}}},
+	}
+	if _, err := listAllObjects(context.Background(), lister); err == nil {
+		t.Fatal("expected error for truncated page without marker")
+	}
+}
+
+type fakeBucketLister struct {
+	pages   []*cos.BucketGetResult
+	markers []string
+	err     error
+}
+
+func (f *fakeBucketLister) Get(_ context.Context, opt *cos.BucketGetOptions) (*cos.BucketGetResult, *cos.Response, error) {
+	if f.err != nil {
+		return nil, nil, f.err
+	}
+	f.markers = append(f.markers, opt.Marker)
+	page := len(f.markers) - 1
+	if page >= len(f.pages) {
+		return nil, nil, errors.New("unexpected extra page")
+	}
+	return f.pages[page], nil, nil
 }

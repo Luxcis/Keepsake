@@ -158,6 +158,33 @@ docker compose down
 
 之后在 `.env` 填入 `COS_SECRET_ID/KEY/REGION/BUCKET` 并 `docker compose up -d --build`，照片上传立刻可用。如需通过 CDN 读取照片，设置 `COS_CDN_DOMAIN=photos.example.com`（可带 `https://`，不能带路径）：原图/缩略图/灯箱 URL 直接指向该域名，不带 COS 签名与有效期（需在 CDN 开启回源鉴权，或把 Bucket 设为公共读；缩略图/灯箱沿用 imageMogr2 参数，CDN 侧需开启图片处理），上传 PUT、HEAD 校验与删除仍走 `{bucket}.cos.{region}.myqcloud.com`；未配置时读取继续使用短时效签名 URL。只想用本地磁盘时无需 COS：开发环境自动启用，容器部署在 `.env` 设置 `STORAGE_DRIVER=local`（文件写入 `./data/uploads`）；两者都未配置时上传接口返回语义化的 `503 cos_not_configured`。
 
+## 一键备份与恢复
+
+管理端「备份」页提供一键备份：点击后服务端在后台生成 zip，页面轮询进度；同一时间只允许一个任务，离开页面不会中断。备份文件保存在 `{BACKUP_DIR}`（默认 `{DATA_DIR}/backups`，容器内 `/data/backups`，随 `./data:/data` 挂载保留），可下载到本机或删除。
+
+备份包结构：
+
+```text
+keepsake-backup-YYYYMMDD-HHMMSS.zip
+├─ journey.db          # SQLite VACUUM INTO 一致性快照（不依赖 -wal/-shm）
+├─ manifest.json       # schema、创建时间、环境、存储驱动、数据库/文件统计、对象列表、排除项
+└─ uploads/<key>       # 本地存储全部普通文件；COS 模式下为桶内全部对象
+```
+
+- 包含：全部数据库表（管理员、旅行、照片、站点设置等）与全部上传对象。
+- 不包含：Redis 会话/限流数据、`.env` 与部署配置、备份目录自身。
+- 本地存储跳过上传临时文件（`.upload-*`）与系统文件（`.DS_Store`）；`.secret` 正常收录。
+- 生成失败不发布半成品：先写 `.tmp`，成功后原子重命名；进程重启会中断进行中的任务并清理临时文件。
+
+恢复（需停机）：
+
+1. `docker compose stop app` 停止服务，并另外备份当前 `data/` 目录。
+2. 解压备份包，将 `journey.db` 覆盖到 `data/`（先删除同目录的 `journey.db-wal`/`journey.db-shm`）。
+3. 将包内 `uploads/` 覆盖到 `data/uploads/`（本地存储模式）。
+4. `docker compose start app`，用管理员账号登录确认数据与照片。
+
+COS 模式：备份会分页列出桶内全部对象并逐个下载，耗时与流量随媒体总量增长；对象读取失败会导致整次备份失败，不会生成缺少文件的包。
+
 ## 阶段路线（→ 计划 §6 排期）
 
 - [x] **11/03–11/04 脚手架**：仓库骨架、配置样例、页面路由、Docker/Nginx 本地跑通

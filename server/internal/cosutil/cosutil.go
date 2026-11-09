@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -56,6 +57,81 @@ type Backend interface {
 	Head(key string) (size int64, contentType string, err error)
 	// Delete 删除对象；对象不存在视为成功（幂等）。
 	Delete(key string) error
+}
+
+// ObjectInfo 是备份枚举所需的最小对象信息。
+type ObjectInfo struct {
+	Key  string `json:"key"`
+	Size int64  `json:"bytes"`
+}
+
+// ObjectSource 是备份链路依赖的最小对象读取能力：列出全部对象并提供读取流。
+// 本地存储、COS 与未启用存储的空实现分别提供该能力。
+type ObjectSource interface {
+	ListObjects(ctx context.Context) ([]ObjectInfo, error)
+	OpenObject(ctx context.Context, key string) (io.ReadCloser, error)
+}
+
+// ListObjects 分页列出桶内全部对象（含大小）。
+// 备份需要读取对象内容，因此使用默认域名（core），不经过自定义源站。
+func (c *Client) ListObjects(ctx context.Context) ([]ObjectInfo, error) {
+	if c == nil || c.core == nil {
+		return nil, ErrNotConfigured
+	}
+	return listAllObjects(ctx, c.core.Bucket)
+}
+
+// OpenObject 按 key 打开对象读取流，调用方负责 Close。
+func (c *Client) OpenObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	if c == nil || c.core == nil {
+		return nil, ErrNotConfigured
+	}
+	resp, err := c.core.Object.Get(ctx, key, nil)
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil, fmt.Errorf("cos get %s: %w", key, err)
+	}
+	return resp.Body, nil
+}
+
+// bucketLister 抽象分页列桶调用，便于用桩测试翻页逻辑。
+type bucketLister interface {
+	Get(ctx context.Context, opt *cos.BucketGetOptions) (*cos.BucketGetResult, *cos.Response, error)
+}
+
+// listAllObjects 处理 IsTruncated/NextMarker，直到取完桶内对象。
+func listAllObjects(ctx context.Context, lister bucketLister) ([]ObjectInfo, error) {
+	const pageSize = 1000
+	var out []ObjectInfo
+	marker := ""
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		res, _, err := lister.Get(ctx, &cos.BucketGetOptions{Marker: marker, MaxKeys: pageSize})
+		if err != nil {
+			return nil, fmt.Errorf("cos list objects: %w", err)
+		}
+		for _, obj := range res.Contents {
+			out = append(out, ObjectInfo{Key: obj.Key, Size: obj.Size})
+		}
+		if !res.IsTruncated {
+			return out, nil
+		}
+		if res.NextMarker == "" {
+			return nil, errors.New("cos list objects: truncated page without next marker")
+		}
+		marker = res.NextMarker
+	}
+}
+
+// 未启用存储时没有对象可备份；读取路径不会被调用。
+func (NoopBackend) ListObjects(context.Context) ([]ObjectInfo, error) { return nil, nil }
+
+func (NoopBackend) OpenObject(context.Context, string) (io.ReadCloser, error) {
+	return nil, ErrNotConfigured
 }
 
 // Client 基于 COS Go SDK 的 Backend 实现。

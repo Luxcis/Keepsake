@@ -179,3 +179,45 @@ export function putToCos(
     xhr.send(file)
   })
 }
+
+// ---------- 管理端备份 ----------
+
+export interface BackupItem {
+  name: string
+  size_bytes: number
+  created_at: string
+}
+
+export interface BackupProgress {
+  started_at: string
+  // snapshot / listing / packing
+  stage: string
+  processed_bytes: number
+  total_bytes: number
+  processed_objects: number
+  total_objects: number
+}
+
+export interface BackupLastResult {
+  name?: string
+  // completed / failed
+  status: string
+  finished_at: string
+  error?: string
+}
+
+export interface BackupStatus {
+  running: BackupProgress | null
+  last: BackupLastResult | null
+  items: BackupItem[]
+}
+
+export interface BackupStartResponse {
+  started: boolean
+  name: string
+}
+
+// 备份下载走浏览器原生下载（Cookie 同源），这里只拼接编码后的路径。
+export function backupDownloadUrl(name: string): string {
+  return `/api/admin/backups/${encodeURIComponent(name)}`
+}
