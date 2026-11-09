@@ -216,7 +216,7 @@ const editingExisting = computed(() => form.id !== '')
     <p v-if="message" class="text-xs text-moss">{{ message }}</p>
 
     <!-- 创建 / 编辑表单 -->
-    <form class="bg-paper border border-line rounded-sm p-6 space-y-4" @submit.prevent="save">
+    <form class="bg-paper border border-line rounded-sm p-4 sm:p-6 space-y-4" @submit.prevent="save">
       <div class="flex items-center justify-between">
         <h2 class="section-title text-xl">{{ editingExisting ? '编辑旅行' : '新建旅行' }}</h2>
         <button
@@ -229,7 +229,7 @@ const editingExisting = computed(() => form.id !== '')
         </button>
       </div>
 
-      <div class="grid md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label class="block">
           <span class="text-[10px] tracking-[0.2em] text-muted">标题 *</span>
           <input v-model="form.title" type="text" class="mt-1 w-full border border-line rounded-sm bg-white/70 px-3 py-2.5 text-sm outline-none focus:border-clay" />
@@ -261,16 +261,16 @@ const editingExisting = computed(() => form.id !== '')
         ></textarea>
       </label>
 
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span class="text-[10px] tracking-[0.2em] text-muted">排序：{{ form.sort_order }}</span>
-        <button type="submit" class="bg-ink text-paper rounded-full px-6 py-3 text-xs tracking-wider hover:bg-moss transition">
+        <button type="submit" class="w-full sm:w-auto bg-ink text-paper rounded-full px-6 py-3 min-h-[44px] text-xs tracking-wider hover:bg-moss transition">
           {{ editingExisting ? '保存修改' : '创建旅行' }}
         </button>
       </div>
     </form>
 
     <!-- 地点维护（编辑中的旅行） -->
-    <div v-if="editingExisting" class="bg-paper border border-line rounded-sm p-6 space-y-3">
+    <div v-if="editingExisting" class="bg-paper border border-line rounded-sm p-4 sm:p-6 space-y-3">
       <div class="flex items-center justify-between">
         <h3 class="section-title text-lg">地点（可多选，自上而下顺序即展示顺序）</h3>
         <button type="button" class="text-xs underline text-muted hover:text-ink" @click="addLocationRow">+ 添加地点</button>
@@ -281,7 +281,7 @@ const editingExisting = computed(() => form.id !== '')
       <div
         v-for="(row, i) in locations.rows"
         :key="i"
-        class="grid grid-cols-2 md:grid-cols-[2fr,2fr,1fr,1fr,auto] gap-2 items-end"
+        class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[2fr,2fr,1fr,1fr,auto] gap-2 sm:items-end"
       >
         <label><span class="text-[10px] text-muted">名称</span>
           <input v-model="row.name" type="text" class="mt-1 w-full border border-line rounded-sm bg-white/70 px-2.5 py-2 text-sm" /></label>
@@ -291,7 +291,7 @@ const editingExisting = computed(() => form.id !== '')
           <input v-model="row.latitude" type="number" step="any" class="mt-1 w-full border border-line rounded-sm bg-white/70 px-2.5 py-2 text-sm" /></label>
         <label><span class="text-[10px] text-muted">经度</span>
           <input v-model="row.longitude" type="number" step="any" class="mt-1 w-full border border-line rounded-sm bg-white/70 px-2.5 py-2 text-sm" /></label>
-        <button type="button" class="text-muted hover:text-clay" aria-label="删除地点" @click="removeLocationRow(i)">✕</button>
+        <button type="button" class="text-muted hover:text-clay min-h-[40px] justify-self-start px-2 sm:justify-self-auto" aria-label="删除地点" @click="removeLocationRow(i)">✕</button>
       </div>
 
       <button
@@ -323,13 +323,13 @@ const editingExisting = computed(() => form.id !== '')
         </div>
       </div>
 
-      <div v-if="coverPreview" class="flex items-center gap-3">
+      <div v-if="coverPreview" class="flex flex-wrap items-center gap-3">
         <img :src="coverPreview" alt="封面预览" class="w-28 h-20 object-cover rounded-sm border border-line" />
         <p class="text-xs text-muted">当前选择，点击「保存修改」生效。</p>
       </div>
       <p v-else class="text-xs text-muted">未选择封面，前台将显示渐变占位色块。</p>
 
-      <div v-if="coverPickerOpen" class="grid grid-cols-3 md:grid-cols-5 gap-2 max-h-72 overflow-y-auto">
+      <div v-if="coverPickerOpen" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 max-h-72 overflow-y-auto">
         <p v-if="coverLoading" class="text-xs text-muted">照片加载中…</p>
         <p v-else-if="!coverPhotos.length" class="text-xs text-muted">
           这个旅行还没有照片，先到「照片管理」上传后再来选封面。
@@ -357,7 +357,7 @@ const editingExisting = computed(() => form.id !== '')
       <article
         v-for="t in trips"
         :key="t.id"
-        class="border border-line rounded-sm bg-paper p-5 flex flex-wrap items-center gap-3 justify-between"
+        class="border border-line rounded-sm bg-paper p-4 sm:p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
       >
         <div class="flex items-center gap-3">
           <img
@@ -372,13 +372,13 @@ const editingExisting = computed(() => form.id !== '')
             <p class="text-xs text-muted mt-1 max-w-xl line-clamp-2">{{ t.summary }}</p>
           </div>
         </div>
-        <div class="flex items-center gap-2 text-xs">
-          <button class="border border-line rounded-full px-4 py-2 hover:bg-ink hover:text-paper transition" @click="startEdit(t)">编辑</button>
-          <button class="border border-line rounded-full px-4 py-2 hover:bg-ink hover:text-paper transition" @click="toggleStatus(t)">
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <button class="border border-line rounded-full px-3 sm:px-4 py-2 min-h-[40px] hover:bg-ink hover:text-paper transition" @click="startEdit(t)">编辑</button>
+          <button class="border border-line rounded-full px-3 sm:px-4 py-2 min-h-[40px] hover:bg-ink hover:text-paper transition" @click="toggleStatus(t)">
             {{ t.status === 'published' ? '转草稿' : '发布' }}
           </button>
           <button
-            class="rounded-full px-4 py-2 border transition"
+            class="rounded-full px-3 sm:px-4 py-2 min-h-[40px] border transition"
             :class="confirmDelete === t.id ? 'bg-clay text-white border-clay' : 'border-line text-muted hover:text-clay'"
             @click="removeTrip(t.id)"
           >

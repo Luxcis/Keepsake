@@ -98,10 +98,10 @@ onBeforeUnmount(() => ctx?.revert())
 </script>
 
 <template>
-  <section class="pt-[74px]">
-    <div class="max-w-5xl mx-auto px-6 md:px-12 py-20">
+  <section>
+    <div class="max-w-5xl mx-auto px-5 sm:px-6 md:px-12 py-14 sm:py-16 md:py-20">
       <p class="mb-6">
-        <RouterLink to="/trips" class="text-xs tracking-widest text-muted hover:text-ink"
+        <RouterLink to="/trips" class="inline-flex min-h-[40px] items-center text-xs tracking-widest text-muted hover:text-ink"
           >← 返回足迹</RouterLink
         >
       </p>
@@ -118,11 +118,11 @@ onBeforeUnmount(() => ctx?.revert())
           @retry="load"
         />
 
-        <article v-if="trip" class="bg-paper rounded-sm shadow-soft p-6 md:p-10">
+        <article v-if="trip" class="bg-paper rounded-sm shadow-soft p-5 sm:p-6 md:p-10">
           <p class="eyebrow mb-4">SELECTED JOURNEY · {{ trip.start_date }}</p>
-          <h1 class="section-title text-3xl md:text-5xl mb-6">{{ trip.title }}</h1>
+          <h1 class="section-title text-2xl sm:text-3xl md:text-5xl mb-5 md:mb-6">{{ trip.title }}</h1>
 
-          <p v-if="showStory" class="text-sm leading-8 text-ink-soft mb-10">{{ trip.summary }}</p>
+          <p v-if="showStory" class="text-sm leading-7 md:leading-8 text-ink-soft mb-8 md:mb-10">{{ trip.summary }}</p>
 
           <div>
             <p class="eyebrow mb-4">PLACES</p>
@@ -130,7 +130,7 @@ onBeforeUnmount(() => ctx?.revert())
               <li
                 v-for="(loc, i) in locations"
                 :key="loc.id"
-                class="flex items-start gap-4 border-b border-line pb-4"
+                class="flex items-start gap-3 sm:gap-4 border-b border-line pb-4"
               >
                 <span class="text-clay section-title text-lg">{{
                   String(i + 1).padStart(2, '0')
@@ -151,7 +151,7 @@ onBeforeUnmount(() => ctx?.revert())
             <p v-else class="text-xs text-muted">这一站的地点信息正在整理。</p>
           </div>
 
-          <div class="mt-12">
+          <div class="mt-10 sm:mt-12">
             <p class="eyebrow mb-4">PHOTOGRAPHS</p>
 
             <p v-if="!loading && !error && photos.length === 0" class="text-xs text-muted">
@@ -163,7 +163,7 @@ onBeforeUnmount(() => ctx?.revert())
             </p>
 
             <template v-else-if="photos.length">
-              <div ref="gridRoot" class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+              <div ref="gridRoot" class="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-5">
                 <button
                   v-for="p in photos"
                   :key="p.id"
@@ -212,8 +212,9 @@ onBeforeUnmount(() => ctx?.revert())
                 </button>
               </div>
 
-              <p class="text-center text-[10px] text-muted tracking-wider mt-8" aria-hidden="true">
-                点击任意照片放大查看 · ESC 返回 · ← → 切换
+              <p class="text-center text-[10px] text-muted tracking-wider mt-6 sm:mt-8" aria-hidden="true">
+                点击任意照片放大查看
+                <span class="hidden sm:inline"> · ESC 返回 · ← → 切换</span>
               </p>
             </template>
           </div>

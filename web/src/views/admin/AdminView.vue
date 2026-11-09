@@ -43,10 +43,10 @@ const tabs = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-paper text-ink">
-    <div class="max-w-5xl mx-auto px-6 py-10">
+  <div class="admin-shell min-h-dvh bg-paper text-ink">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
       <!-- 未登录态 -->
-      <div v-if="checked && !me" class="max-w-md mx-auto bg-paper rounded-sm shadow-soft p-10 text-center mt-10">
+      <div v-if="checked && !me" class="w-full max-w-md mx-auto bg-paper rounded-sm shadow-soft p-6 sm:p-10 text-center mt-6 sm:mt-10">
         <p class="eyebrow mb-3">SIGNED OUT</p>
         <h1 class="section-title text-2xl mb-3">需要先登录管理员账号。</h1>
         <p class="text-xs text-muted mb-7">会话有效期 24 小时，过期后需重新登录。</p>
@@ -59,15 +59,15 @@ const tabs = [
 
       <!-- 已登录布局 -->
       <template v-if="me">
-        <header class="flex items-end justify-between mb-8">
+        <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6 sm:mb-8">
           <div>
             <p class="eyebrow mb-2">ADMIN CONSOLE</p>
-            <h1 class="section-title text-3xl">管理后台</h1>
+            <h1 class="section-title text-2xl sm:text-3xl">管理后台</h1>
           </div>
-          <div class="flex items-center gap-4 text-xs text-muted">
+          <div class="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-muted">
             <span>{{ me.username }}</span>
-            <button class="underline hover:text-ink" @click="logout">退出</button>
-            <RouterLink to="/" class="hover:text-ink">← 返回前台</RouterLink>
+            <button class="underline hover:text-ink min-h-[40px] px-1" @click="logout">退出</button>
+            <RouterLink to="/" class="hover:text-ink inline-flex min-h-[40px] items-center">← 返回前台</RouterLink>
           </div>
         </header>
 

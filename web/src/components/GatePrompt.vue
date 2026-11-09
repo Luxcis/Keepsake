@@ -48,7 +48,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="max-w-md mx-auto bg-paper rounded-sm shadow-soft p-8 md:p-10 text-center">
+  <div class="w-full max-w-md mx-auto bg-paper rounded-sm shadow-soft p-6 sm:p-8 md:p-10 text-center">
     <p class="eyebrow mb-3">A PRIVATE PLACE</p>
     <h2 class="section-title text-2xl mb-3">这是只属于你们的地方。</h2>
     <p v-if="hint" class="text-xs text-muted leading-6 mb-5">{{ hint }}</p>
@@ -68,7 +68,7 @@ async function submit() {
       <button
         type="submit"
         :disabled="busy"
-        class="bg-ink text-paper rounded-full px-6 py-3 text-xs tracking-wider hover:bg-moss transition disabled:opacity-50 whitespace-nowrap"
+        class="bg-ink text-paper rounded-full px-5 sm:px-6 py-3 min-h-[44px] text-xs tracking-wider hover:bg-moss transition disabled:opacity-50 whitespace-nowrap"
       >
         {{ busy ? '解锁中…' : '解锁' }}
       </button>

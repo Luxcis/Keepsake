@@ -85,8 +85,8 @@ onBeforeUnmount(() => ctx?.revert())
 </script>
 
 <template>
-  <section ref="root" class="pt-[74px]">
-    <div class="hero relative min-h-[620px] md:min-h-[680px] flex items-end">
+  <section ref="root">
+    <div class="hero relative min-h-[540px] sm:min-h-[600px] md:min-h-[680px] flex items-end">
       <div class="hero-canvas absolute inset-0" aria-hidden="true">
         <img
           v-if="heroSrc(heroPhoto)"
@@ -97,18 +97,18 @@ onBeforeUnmount(() => ctx?.revert())
         />
         <div v-if="heroSrc(heroPhoto)" class="hero-photo-scrim absolute inset-0"></div>
       </div>
-      <div class="max-w-7xl mx-auto w-full px-6 md:px-12 pb-16 md:pb-24 text-[#f8f4eb] relative">
+      <div class="max-w-7xl mx-auto w-full px-5 sm:px-6 md:px-12 pb-12 sm:pb-16 md:pb-24 text-[#f8f4eb] relative">
         <div class="max-w-2xl">
           <p class="eyebrow !text-[#e5c9a4] mb-6 hero-anim">{{ site.state.settings.hero_kicker }}</p>
           <h1
-            class="section-title text-[clamp(2rem,9vw,2.85rem)] md:text-6xl lg:text-7xl leading-[1.15] md:leading-[1.12] mb-6 hero-anim"
+            class="section-title text-[clamp(2rem,8.6vw,2.85rem)] sm:text-5xl md:text-6xl lg:text-7xl leading-[1.15] md:leading-[1.12] mb-6 hero-anim"
           >
             {{ site.state.settings.hero_title }}
           </h1>
-          <p class="text-sm md:text-base text-white/80 leading-8 max-w-lg hero-anim">
+          <p class="text-sm md:text-base text-white/80 leading-7 md:leading-8 max-w-lg hero-anim">
             {{ site.state.settings.hero_subtitle }}
           </p>
-          <div class="mt-10 flex flex-wrap items-center gap-5 hero-anim">
+          <div class="mt-8 sm:mt-10 flex flex-wrap items-center gap-4 sm:gap-5 hero-anim">
             <RouterLink
               to="/trips"
               class="bg-[#f4efe5] text-ink px-6 py-3 rounded-full text-xs tracking-wider hover:bg-white transition"
@@ -130,17 +130,17 @@ onBeforeUnmount(() => ctx?.revert())
     </div>
 
     <div
-      class="max-w-7xl mx-auto px-6 md:px-12 py-7 flex justify-between items-center text-[10px] tracking-[0.18em] text-muted"
+      class="max-w-7xl mx-auto px-5 sm:px-6 md:px-12 py-5 sm:py-7 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center text-[10px] tracking-[0.18em] text-muted"
     >
       <span>OUR STORY · 202X — 2026</span>
       <span aria-hidden="true">SCROLL TO EXPLORE ↓</span>
     </div>
 
     <!-- 简介 + 足迹入口（脚手架静态版） -->
-    <section class="deco-wrap max-w-7xl mx-auto px-6 md:px-12 py-20 grid md:grid-cols-2 gap-12 items-center">
+    <section class="deco-wrap max-w-7xl mx-auto px-5 sm:px-6 md:px-12 py-14 sm:py-16 md:py-20 grid md:grid-cols-2 gap-8 md:gap-12 items-center">
       <div class="deco-anim">
         <p class="eyebrow mb-5">A NOTE FOR YOU</p>
-        <h2 class="section-title text-3xl md:text-5xl leading-tight mb-7">
+        <h2 class="section-title text-[clamp(1.8rem,6vw,2.4rem)] md:text-5xl leading-tight mb-5 md:mb-7">
           把一起走过的<br />
           <span class="text-clay italic">日子，收藏起来。</span>
         </h2>
@@ -148,7 +148,7 @@ onBeforeUnmount(() => ctx?.revert())
           我把一起看过的风景、走过的路、拍下的照片，都整理在这里。希望你打开它的时候，能重新感受到那些快乐的瞬间。
         </p>
       </div>
-      <div class="deco-anim grid grid-cols-5 gap-3 items-center">
+      <div class="deco-anim grid grid-cols-5 gap-2 sm:gap-3 items-center">
         <div class="col-span-3 photo-card rounded-sm aspect-[4/5] hero-deco-1">
           <img
             v-if="cardSrc(decoPhotoA)"
@@ -159,7 +159,7 @@ onBeforeUnmount(() => ctx?.revert())
             @error="onImageError(decoPhotoA)"
           />
         </div>
-        <div class="col-span-2 space-y-3">
+        <div class="col-span-2 space-y-2 sm:space-y-3">
           <div class="photo-card aspect-[4/5] rounded-sm hero-deco-2">
             <img
               v-if="cardSrc(decoPhotoB)"
@@ -170,9 +170,9 @@ onBeforeUnmount(() => ctx?.revert())
               @error="onImageError(decoPhotoB)"
             />
           </div>
-          <div class="bg-[#e8e3d8] p-4 md:p-5">
+          <div class="bg-[#e8e3d8] p-3 sm:p-4 md:p-5">
             <span class="eyebrow">LITTLE MOMENTS</span>
-            <p class="section-title text-xl mt-2">平凡日子<br />也闪闪发光。</p>
+            <p class="section-title text-lg sm:text-xl mt-2">平凡日子<br />也闪闪发光。</p>
           </div>
         </div>
       </div>

@@ -42,12 +42,12 @@ async function submit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center px-6 py-16">
+  <div class="min-h-dvh flex items-center justify-center px-5 sm:px-6 py-12 sm:py-16">
     <div class="w-full max-w-sm">
       <p class="text-center eyebrow mb-3">KEEPSAKE · 拾光集</p>
-      <h1 class="section-title text-3xl text-center mb-8">管理员登录</h1>
+      <h1 class="section-title text-2xl sm:text-3xl text-center mb-6 sm:mb-8">管理员登录</h1>
 
-      <form class="bg-paper rounded-sm shadow-soft p-8 space-y-5" @submit.prevent="submit">
+      <form class="bg-paper rounded-sm shadow-soft p-6 sm:p-8 space-y-5" @submit.prevent="submit">
         <label class="block">
           <span class="text-[10px] tracking-[0.2em] text-muted">USERNAME</span>
           <input
@@ -78,7 +78,7 @@ async function submit() {
         </button>
 
         <p class="text-center text-[10px] text-muted">
-          <RouterLink to="/" class="hover:text-ink">← 返回前台</RouterLink>
+          <RouterLink to="/" class="inline-flex min-h-[40px] items-center hover:text-ink">← 返回前台</RouterLink>
         </p>
       </form>
     </div>

@@ -80,11 +80,11 @@ onBeforeUnmount(() => ctx?.revert())
 </script>
 
 <template>
-  <section class="pt-[74px]">
-    <div class="max-w-4xl mx-auto px-6 md:px-12 py-20 md:py-28">
+  <section>
+    <div class="max-w-4xl mx-auto px-5 sm:px-6 md:px-12 py-16 sm:py-20 md:py-28">
       <div class="text-center mb-12">
         <p class="eyebrow mb-4">A LETTER FOR YOU</p>
-        <h1 class="section-title text-4xl md:text-5xl leading-tight">
+        <h1 class="section-title text-3xl sm:text-4xl md:text-5xl leading-tight">
           旅程还没有结束，<br />
           <span class="text-clay italic">还有一封信给你。</span>
         </h1>
@@ -108,14 +108,14 @@ onBeforeUnmount(() => ctx?.revert())
 
         <template v-if="letter">
           <!-- 信封与揭晓（信件已配置时） -->
-          <div v-if="needEnvelope && !revealed" ref="envelope" class="max-w-md mx-auto">
+          <div v-if="needEnvelope && !revealed" ref="envelope" class="w-full max-w-md mx-auto">
             <div
-              class="relative h-64 md:h-72 rounded-sm shadow-soft overflow-hidden"
+              class="relative h-60 sm:h-64 md:h-72 rounded-sm shadow-soft overflow-hidden"
               style="perspective: 800px"
             >
               <div class="absolute inset-0 linear-envelope"></div>
-              <div class="absolute bottom-0 left-0 right-0 border-envelope-bottom"></div>
-              <div class="envelope-flap absolute top-0 left-0 right-0 border-envelope-flap"></div>
+              <div class="absolute bottom-0 left-0 right-0 h-[42%] border-envelope-bottom"></div>
+              <div class="envelope-flap absolute top-0 left-0 right-0 h-[42%] border-envelope-flap"></div>
               <div class="absolute inset-0 flex flex-col items-center justify-center pt-5">
                 <span class="text-3xl text-[#8f7050]" aria-hidden="true">✳</span>
                 <span class="section-title text-2xl text-[#6e5b44] mt-2">For You</span>
@@ -133,7 +133,7 @@ onBeforeUnmount(() => ctx?.revert())
           <!-- 信纸正文 -->
           <article
             v-else
-            class="letter-paper max-w-md mx-auto mt-2 p-7 md:p-10"
+            class="letter-paper w-full max-w-md mx-auto mt-2 p-5 sm:p-7 md:p-10"
           >
             <p class="eyebrow mb-4">DEAR YOU,</p>
             <h2 class="section-title text-2xl mb-5">{{ letter.title }}</h2>
@@ -143,7 +143,7 @@ onBeforeUnmount(() => ctx?.revert())
               <p v-if="!paragraphs.length" class="text-muted">(信纸留白中)</p>
             </div>
 
-            <div class="border-t border-[#ddd3c2] mt-7 pt-5 flex items-center justify-between text-right">
+            <div class="border-t border-[#ddd3c2] mt-7 pt-5 flex flex-wrap items-center justify-between gap-2 text-right">
               <span class="text-[10px] tracking-[0.18em] text-muted">
                 {{ letter.updated_at.slice(0, 10).replace(/-/g, '.') }}
               </span>
@@ -152,9 +152,9 @@ onBeforeUnmount(() => ctx?.revert())
           </article>
 
           <!-- 语音彩蛋占位（COS 签名 URL 阶段接入播放） -->
-          <div v-if="letter.audio_key" class="max-w-md mx-auto mt-6 text-center">
+          <div v-if="letter.audio_key" class="w-full max-w-md mx-auto mt-6 text-center">
             <span
-              class="inline-flex items-center gap-3 border border-[#d9d2c6] rounded-full px-5 py-3 text-xs text-muted"
+              class="inline-flex items-center gap-3 border border-[#d9d2c6] rounded-full px-4 sm:px-5 py-3 text-xs leading-6 text-muted text-left"
             >
               <span aria-hidden="true">◉</span> 随信语音彩蛋 · COS 链路上线后可播放
             </span>
@@ -169,33 +169,15 @@ onBeforeUnmount(() => ctx?.revert())
 .linear-envelope {
   background: linear-gradient(145deg, #e7d8bf, #c8ae8a);
 }
+/* 用百分比裁切代替固定像素三角，信封始终与卡片同宽，手机上也不会两侧漏空。 */
 .border-envelope-bottom {
-  height: 0;
-  width: 0;
-  border-left: 120px solid transparent;
-  border-right: 120px solid transparent;
-  border-bottom: 100px solid #bfa581;
-  max-width: 100%;
+  background: #bfa581;
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
 }
 .border-envelope-flap {
-  height: 0;
-  width: 0;
-  border-left: 120px solid transparent;
-  border-right: 120px solid transparent;
-  border-top: 92px solid #e9dbc4;
+  background: #e9dbc4;
+  clip-path: polygon(0 0, 50% 100%, 100% 0);
   transform-origin: top;
   filter: drop-shadow(0 3px 2px rgba(70, 50, 30, 0.08));
-}
-@media (min-width: 768px) {
-  .border-envelope-bottom {
-    border-left-width: 190px;
-    border-right-width: 190px;
-    border-bottom-width: 150px;
-  }
-  .border-envelope-flap {
-    border-left-width: 190px;
-    border-right-width: 190px;
-    border-top-width: 136px;
-  }
 }
 </style>

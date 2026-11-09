@@ -90,11 +90,11 @@ onBeforeUnmount(() => ctx?.revert())
 </script>
 
 <template>
-  <section ref="root" class="pt-[74px]">
-    <div class="max-w-5xl mx-auto px-6 md:px-12 py-20 md:py-24">
-      <div class="text-center mb-16">
+  <section ref="root">
+    <div class="max-w-5xl mx-auto px-5 sm:px-6 md:px-12 py-16 sm:py-20 md:py-24">
+      <div class="text-center mb-12 sm:mb-16">
         <p class="eyebrow mb-4">OUR MEMORY TIMELINE</p>
-        <h1 class="section-title text-3xl md:text-5xl">一起走过的日子</h1>
+        <h1 class="section-title text-3xl sm:text-4xl md:text-5xl">一起走过的日子</h1>
         <p class="text-sm text-muted mt-5">那些看似平凡，却一直记得的瞬间。</p>
       </div>
 
@@ -115,12 +115,12 @@ onBeforeUnmount(() => ctx?.revert())
             class="timeline-line absolute left-[15px] md:left-1/2 top-0 bottom-0 w-px"
             aria-hidden="true"
           ></div>
-          <div class="space-y-14">
+          <div class="space-y-12 sm:space-y-14">
             <RouterLink
               v-for="(trip, i) in trips"
               :key="trip.id"
               :to="`/trips/${trip.id}`"
-              class="reveal group relative grid md:grid-cols-2 gap-7 md:gap-16 items-center"
+              class="reveal group relative grid md:grid-cols-2 gap-6 md:gap-10 lg:gap-16 items-center"
             >
               <span
                 class="absolute left-[9px] md:left-[calc(50%-6px)] top-2 w-3 h-3 rounded-full bg-clay ring-4 ring-paper-deep"
@@ -128,7 +128,7 @@ onBeforeUnmount(() => ctx?.revert())
               ></span>
               <div class="pl-12 md:pl-0" :class="i % 2 === 1 ? 'md:order-2' : 'md:text-right'">
                 <p class="eyebrow mb-2">{{ formatDateRange(trip) }}</p>
-                <h2 class="section-title text-2xl">{{ trip.title }}</h2>
+                <h2 class="section-title text-xl sm:text-2xl">{{ trip.title }}</h2>
                 <p v-if="trip.summary" class="text-sm text-muted leading-7 mt-3">
                   {{ trip.summary }}
                 </p>
@@ -138,7 +138,7 @@ onBeforeUnmount(() => ctx?.revert())
                 </span>
               </div>
               <div class="pl-12 md:pl-0" :class="i % 2 === 1 ? 'md:order-1' : ''">
-                <div class="polaroid max-w-[330px] mx-auto md:mx-0">
+                <div class="polaroid max-w-[300px] sm:max-w-[330px] mx-auto md:mx-0">
                   <div class="overflow-hidden">
                     <img
                       v-if="trip.cover_thumb_src"

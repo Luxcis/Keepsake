@@ -25,14 +25,54 @@
 }
 
 /* ---------- 基础 ---------- */
+:root {
+  /* 固定头部高度：手机为品牌行 + 导航行，平板/桌面恢复单行。
+     页面主内容统一用 .site-main 让位，避免逐页写死 74px。 */
+  --header-row-h: 60px;
+  --header-nav-h: 44px;
+  --header-h: calc(var(--header-row-h) + var(--header-nav-h) + env(safe-area-inset-top, 0px) + 1px);
+}
+@media (min-width: 768px) {
+  :root {
+    --header-row-h: 74px;
+    --header-nav-h: 0px;
+    --header-h: calc(var(--header-row-h) + env(safe-area-inset-top, 0px) + 1px);
+  }
+}
+
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 body {
   background-color: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-wrap: break-word;
+}
+
+/* 有顶部固定头部的页面（admin 等 plain 路由不应用） */
+.site-main {
+  padding-top: var(--header-h);
+}
+
+/* 固定头部 / 灯箱等贴边元素的安全区内边距 */
+.edge-safe {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 640px) {
+  .edge-safe {
+    padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  }
+}
+@media (min-width: 768px) {
+  .edge-safe {
+    padding-left: max(2.5rem, env(safe-area-inset-left, 0px));
+    padding-right: max(2.5rem, env(safe-area-inset-right, 0px));
+  }
 }
 
 /* 胶片颗粒质感（demo.html 的 grain 层） */
@@ -78,12 +118,21 @@ body {
   box-shadow: 0 16px 45px rgba(53, 47, 37, 0.13);
 }
 .pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   border: 1px solid #d9d2c6;
   border-radius: 999px;
   padding: 8px 14px;
   font-size: 12px;
   color: #6d746a;
   transition: 0.2s;
+}
+@media (max-width: 639px) {
+  .pill {
+    padding: 7px 11px;
+    font-size: 11px;
+  }
 }
 .pill.active,
 .pill:hover {
@@ -107,6 +156,50 @@ body {
   right: 0;
   bottom: -9px;
   height: 1px;
+  background: var(--color-clay);
+}
+
+/* 管理后台：所有可点击控件保证至少 40px 的触控区域（手机端触控可达性）。 */
+.admin-shell a,
+.admin-shell button {
+  display: inline-flex;
+  align-items: center;
+}
+.admin-shell a,
+.admin-shell button,
+.admin-shell input:not([type='hidden']),
+.admin-shell select,
+.admin-shell textarea {
+  min-height: 40px;
+}
+.admin-shell button {
+  min-width: 40px;
+  justify-content: center;
+}
+
+/* 手机端导航项：整块可点，点击高度 ≥ 44px，选中态贴近行底 */
+.nav-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 10px;
+  color: #6d746a;
+  transition: color 0.25s;
+}
+.nav-tab:hover,
+.nav-tab.router-link-active {
+  color: var(--color-ink);
+}
+.nav-tab.router-link-active::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 2px;
   background: var(--color-clay);
 }
 

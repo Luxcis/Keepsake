@@ -52,7 +52,7 @@ async function save() {
       上次更新：{{ updated.slice(0, 10).replace(/-/g, '.') }}
     </p>
 
-    <form class="bg-paper border border-line rounded-sm p-6 space-y-4" @submit.prevent="save">
+    <form class="bg-paper border border-line rounded-sm p-4 sm:p-6 space-y-4" @submit.prevent="save">
       <label class="block">
         <span class="text-[10px] tracking-[0.2em] text-muted">标题</span>
         <input
@@ -72,8 +72,19 @@ async function save() {
         ></textarea>
       </label>
 
-      <label class="flex items-center gap-2 text-xs text-muted">
-        <input v-model="letter.reveal_enabled" type="checkbox" class="accent-clay" />
+      <label class="flex min-h-[44px] items-center gap-2 text-xs text-muted">
+        <span class="relative inline-flex h-10 w-10 shrink-0 items-center justify-center">
+          <input
+            v-model="letter.reveal_enabled"
+            type="checkbox"
+            class="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+          />
+          <span
+            class="pointer-events-none flex h-5 w-5 items-center justify-center rounded-[3px] border border-line bg-white/70 text-[11px] text-white peer-checked:border-clay peer-checked:bg-clay"
+            aria-hidden="true"
+            >✓</span
+          >
+        </span>
         前台先呈现信封，由收件人点击「拆开这封信」揭晓（关闭则直接展示正文）
       </label>
 
@@ -86,7 +97,7 @@ async function save() {
         />
       </label>
 
-      <button type="submit" class="bg-ink text-paper rounded-full px-6 py-3 text-xs tracking-wider hover:bg-moss transition">
+      <button type="submit" class="w-full sm:w-auto bg-ink text-paper rounded-full px-6 py-3 min-h-[44px] text-xs tracking-wider hover:bg-moss transition">
         保存生日信
       </button>
     </form>

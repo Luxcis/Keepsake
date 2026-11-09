@@ -137,15 +137,15 @@ onUnmounted(() => {
     <p v-if="actionErr" class="text-xs text-clay">{{ actionErr }}</p>
     <p v-if="notice" class="text-xs text-moss">{{ notice }}</p>
 
-    <div class="bg-paper border border-line rounded-sm p-6 space-y-4">
-      <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="bg-paper border border-line rounded-sm p-4 sm:p-6 space-y-4">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="text-xs text-muted space-y-1 max-w-xl">
           <p>备份包含 SQLite 数据库与全部上传文件（照片、视频），生成在当前服务器。</p>
           <p>不包含 .env、部署配置与 Redis 会话数据；建议生成后下载到本机留存。</p>
         </div>
         <button
           type="button"
-          class="bg-ink text-paper rounded-full px-6 py-3 text-xs tracking-wider hover:bg-moss transition disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-full sm:w-auto bg-ink text-paper rounded-full px-6 py-3 min-h-[44px] text-xs tracking-wider hover:bg-moss transition disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="busy || !!running"
           @click="startBackup"
         >
@@ -175,21 +175,21 @@ onUnmounted(() => {
     </div>
 
     <div class="bg-paper border border-line rounded-sm">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-line">
+      <div class="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-line">
         <h2 class="text-sm">已有备份</h2>
         <button type="button" class="text-xs text-muted underline hover:text-ink" @click="load">
           刷新
         </button>
       </div>
 
-      <p v-if="items.length === 0" class="px-6 py-8 text-xs text-muted">
+      <p v-if="items.length === 0" class="px-4 sm:px-6 py-8 text-xs text-muted">
         还没有备份。点击「立即备份」生成第一份。
       </p>
       <ul v-else class="divide-y divide-line">
         <li
           v-for="item in items"
           :key="item.name"
-          class="px-6 py-4 flex flex-wrap items-center justify-between gap-3"
+          class="px-4 sm:px-6 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <div class="min-w-0">
             <p class="text-sm truncate">{{ item.name }}</p>
@@ -197,7 +197,7 @@ onUnmounted(() => {
               {{ formatTime(item.created_at) }} · {{ formatBytes(item.size_bytes) }}
             </p>
           </div>
-          <div class="flex items-center gap-4 text-xs">
+          <div class="flex items-center gap-4 text-xs sm:shrink-0">
             <a :href="backupDownloadUrl(item.name)" class="underline hover:text-ink">下载</a>
             <button type="button" class="text-clay hover:underline" @click="removeBackup(item)">
               删除

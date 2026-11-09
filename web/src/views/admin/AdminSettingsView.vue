@@ -80,8 +80,8 @@ async function save() {
       <p>开放日期：{{ openDate || '未设置（随时可解锁）' }}。日期未到时即使口令正确也无法解锁，管理员登录后仍可预览。</p>
     </div>
 
-    <form class="bg-paper border border-line rounded-sm p-6 space-y-4" @submit.prevent="save">
-      <div class="grid md:grid-cols-2 gap-4">
+    <form class="bg-paper border border-line rounded-sm p-4 sm:p-6 space-y-4" @submit.prevent="save">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label v-for="m in META" :key="m.key" class="block">
           <span class="text-[10px] tracking-[0.2em] text-muted">{{ m.label }}</span>
           <textarea
@@ -138,7 +138,7 @@ async function save() {
         </span>
       </label>
 
-      <button type="submit" class="bg-ink text-paper rounded-full px-6 py-3 text-xs tracking-wider hover:bg-moss transition">
+      <button type="submit" class="w-full sm:w-auto bg-ink text-paper rounded-full px-6 py-3 min-h-[44px] text-xs tracking-wider hover:bg-moss transition">
         保存设置
       </button>
     </form>

@@ -223,13 +223,13 @@ onMounted(async () => {
     <p v-if="notice" class="text-xs text-moss">{{ notice }}</p>
 
     <!-- 旅行选择 + 上传 -->
-    <div class="bg-paper border border-line rounded-sm p-6 space-y-4">
-      <div class="flex flex-wrap items-center gap-3">
-        <label class="text-xs text-muted">
+    <div class="bg-paper border border-line rounded-sm p-4 sm:p-6 space-y-4">
+      <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <label class="flex flex-col gap-2 text-xs text-muted sm:flex-row sm:items-center">
           旅行
           <select
             :value="tripId"
-            class="ml-2 border border-line rounded-sm bg-white/70 px-3 py-2 text-sm"
+            class="w-full min-w-0 border border-line rounded-sm bg-white/70 px-3 py-2 text-sm sm:ml-2 sm:w-auto"
             @change="pickTrip(($event.target as HTMLSelectElement).value)"
           >
             <option v-if="!trips.length" value="">（尚无旅行，请先在“旅行管理”创建）</option>
@@ -237,14 +237,14 @@ onMounted(async () => {
           </select>
         </label>
 
-        <label class="ml-auto flex items-center gap-2 text-xs text-muted">
+        <label class="flex flex-col gap-2 text-xs text-muted sm:ml-auto sm:flex-row sm:items-center">
           选择文件（可多选，照片 ≤30MB、视频 ≤400MB；同名照片 + 视频识别为实况照片，单独视频作为视频上传）
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime"
             multiple
             :disabled="uploading || !tripId"
-            class="text-xs"
+            class="w-full max-w-full text-xs sm:w-auto"
             @change="onFilesChosen"
           />
         </label>
@@ -287,7 +287,7 @@ onMounted(async () => {
       empty-hint="建议每次安排 8–20 张精选照片。"
     />
 
-    <div v-if="photos.length" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+    <div v-if="photos.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
       <article
         v-for="(p, i) in photos"
         :key="p.id"

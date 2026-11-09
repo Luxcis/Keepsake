@@ -51,12 +51,12 @@ onBeforeUnmount(() => ctx?.revert())
 </script>
 
 <template>
-  <section class="pt-[74px]">
-    <div class="max-w-7xl mx-auto px-6 md:px-12 py-20 md:py-24">
+  <section>
+    <div class="max-w-7xl mx-auto px-5 sm:px-6 md:px-12 py-16 sm:py-20 md:py-24">
       <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
         <div>
           <p class="eyebrow mb-4">PLACES WE'VE BEEN</p>
-          <h1 class="section-title text-4xl md:text-5xl">我们的足迹</h1>
+          <h1 class="section-title text-3xl sm:text-4xl md:text-5xl">我们的足迹</h1>
         </div>
         <p class="text-sm text-ink-soft leading-7 max-w-sm">
           每一次出发，都成为了我们故事的一部分。<br />
@@ -76,7 +76,7 @@ onBeforeUnmount(() => ctx?.revert())
           @retry="load"
         />
 
-        <div v-if="!loading && !error && trips.length" ref="gridRoot" class="grid md:grid-cols-3 gap-5">
+        <div v-if="!loading && !error && trips.length" ref="gridRoot" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
           <RouterLink
             v-for="(trip, i) in trips"
             :key="trip.id"
