@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api, isGateRequired, type Letter as LetterData } from '@/api/client'
 import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
@@ -47,8 +47,9 @@ const needEnvelope = computed(
 
 async function openLetter() {
   if (phase.value !== 'closed') return // 动画中/已完成，重复点击直接忽略
-  // 先锁住入口：bindMotion 的动态 import 是异步的，避免这段时间内重复进入。
+  // 先锁住入口并立刻隐藏按钮：bindMotion 的动态 import 是异步的，避免这段时间内重复进入。
   phase.value = 'animating'
+  await nextTick() // 等按钮隐藏后的布局生效，占位高度才按最终版式计算
 
   const bound = await bindMotion(scene)
   const clip = paperClip.value
@@ -80,7 +81,7 @@ async function openLetter() {
   ctx = gsap.context(() => {
     // 信封各层独立参与淡出（不额外包一层，否则会把信纸一起放进信封的堆叠上下文）。
     const envelope =
-      '.envelope-inside, .envelope-front, .border-envelope-bottom, .envelope-flap, .envelope-label, .envelope-button'
+      '.envelope-inside, .envelope-front, .border-envelope-bottom, .envelope-flap, .envelope-label'
     gsap
       .timeline({
         onComplete: () => {
@@ -164,6 +165,7 @@ onBeforeUnmount(() => ctx?.revert())
             </div>
 
             <button
+              v-show="phase === 'closed'"
               class="envelope-button mt-6 mx-auto block rounded-full bg-ink text-paper px-7 py-3 text-xs tracking-wider hover:bg-moss transition disabled:cursor-default"
               :disabled="phase !== 'closed'"
               @click="openLetter"
