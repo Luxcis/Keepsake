@@ -70,6 +70,8 @@ export interface Trip {
   // 服务端按封面照片签名的缩略图 URL（COS 未配置/签名失败时为空串 → 前端回退占位）
   cover_thumb_src?: string
   sort_order: number
+  // 同一时刻最多一个旅行置顶；置顶旅行不出现在足迹列表，只在时光轴顶部展示。
+  pinned: boolean
   status: string
   created_at: string
   updated_at: string

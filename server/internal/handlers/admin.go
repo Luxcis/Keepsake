@@ -114,6 +114,26 @@ func (h *Handlers) deleteTrip(w http.ResponseWriter, r *http.Request) {
 	Data(w, http.StatusOK, map[string]any{"deleted": true})
 }
 
+// setTripPin：置顶 / 取消置顶；同一时刻最多只有一个置顶旅行。
+func (h *Handlers) setTripPin(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in struct {
+		Pinned *bool `json:"pinned"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if in.Pinned == nil {
+		err(w, http.StatusBadRequest, "bad_request", "pinned 必须为布尔值")
+		return
+	}
+	if perr := h.st.SetTripPinned(r.Context(), id, *in.Pinned); perr != nil {
+		mapStoreErr(w, perr)
+		return
+	}
+	Data(w, http.StatusOK, map[string]any{"pinned": *in.Pinned})
+}
+
 func (h *Handlers) putTripLocations(w http.ResponseWriter, r *http.Request) {
 	tripID := chi.URLParam(r, "id")
 	if _, _, gerr := h.st.GetTripAny(r.Context(), tripID); gerr != nil {

@@ -207,10 +207,47 @@ func (s *Store) DeleteTrip(ctx context.Context, id string) error {
 	return requireRowsAffected(res, id)
 }
 
+// SetTripPinned 设置旅行置顶状态。
+// 置顶时在同一事务内先清除原置顶，配合局部唯一索引保证同一时刻最多一个置顶旅行。
+func (s *Store) SetTripPinned(ctx context.Context, id string, pinned bool) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// 先确认旅行存在，避免对不存在的旅行清除其他置顶。
+	var exists int
+	if qerr := tx.QueryRowContext(ctx, `SELECT 1 FROM trips WHERE id = ?`, id).Scan(&exists); qerr != nil {
+		if qerr == sql.ErrNoRows {
+			return ErrNotFound
+		}
+		return qerr
+	}
+
+	if pinned {
+		if _, uerr := tx.ExecContext(ctx,
+			`UPDATE trips SET is_pinned = 0, updated_at = ? WHERE is_pinned = 1 AND id <> ?`,
+			nowUTC(), id); uerr != nil {
+			return uerr
+		}
+	}
+	v := 0
+	if pinned {
+		v = 1
+	}
+	if _, uerr := tx.ExecContext(ctx,
+		`UPDATE trips SET is_pinned = ?, updated_at = ? WHERE id = ?`,
+		v, nowUTC(), id); uerr != nil {
+		return uerr
+	}
+	return tx.Commit()
+}
+
 // ListTripsAdmin 返回全部旅行（含草稿），管理端使用。
 func (s *Store) ListTripsAdmin(ctx context.Context) ([]Trip, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, status, created_at, updated_at
+		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, is_pinned, status, created_at, updated_at
 		FROM trips ORDER BY sort_order ASC, start_date DESC`)
 	if err != nil {
 		return nil, err
@@ -220,7 +257,7 @@ func (s *Store) ListTripsAdmin(ctx context.Context) ([]Trip, error) {
 	for rows.Next() {
 		var t Trip
 		if err := rows.Scan(&t.ID, &t.Title, &t.Summary, &t.StartDate, &t.EndDate,
-			&t.CoverPhotoID, &t.SortOrder, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.CoverPhotoID, &t.SortOrder, &t.Pinned, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		trips = append(trips, t)
@@ -243,10 +280,10 @@ func requireRowsAffected(res sql.Result, id string) error {
 func (s *Store) GetTripAny(ctx context.Context, id string) (*Trip, []TripLocation, error) {
 	var t Trip
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, status, created_at, updated_at
+		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, is_pinned, status, created_at, updated_at
 		FROM trips WHERE id = ?`, id).
 		Scan(&t.ID, &t.Title, &t.Summary, &t.StartDate, &t.EndDate,
-			&t.CoverPhotoID, &t.SortOrder, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+			&t.CoverPhotoID, &t.SortOrder, &t.Pinned, &t.Status, &t.CreatedAt, &t.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil, ErrNotFound
 	}

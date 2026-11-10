@@ -19,9 +19,11 @@ type Trip struct {
 	// 瞬态字段：handlers 层按 CoverPhotoID 签名的封面缩略图 URL（store 不写，见 marshal.go）。
 	CoverThumbSrc string `json:"cover_thumb_src"`
 	SortOrder     int    `json:"sort_order"`
-	Status        string `json:"status"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
+	// Pinned：同一时刻最多一个旅行置顶（数据库局部唯一索引保证）。
+	Pinned    bool   `json:"pinned"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type TripLocation struct {
@@ -39,7 +41,7 @@ type TripLocation struct {
 // 同一天出发时沿用 sort_order 维护的相对顺序。
 func (s *Store) ListTrips(ctx context.Context) ([]Trip, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, status, created_at, updated_at
+		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, is_pinned, status, created_at, updated_at
 		FROM trips
 		WHERE status = 'published'
 		ORDER BY start_date DESC, sort_order ASC`)
@@ -52,7 +54,7 @@ func (s *Store) ListTrips(ctx context.Context) ([]Trip, error) {
 	for rows.Next() {
 		var t Trip
 		if err := rows.Scan(&t.ID, &t.Title, &t.Summary, &t.StartDate, &t.EndDate,
-			&t.CoverPhotoID, &t.SortOrder, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.CoverPhotoID, &t.SortOrder, &t.Pinned, &t.Status, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		trips = append(trips, t)
@@ -64,10 +66,10 @@ func (s *Store) ListTrips(ctx context.Context) ([]Trip, error) {
 func (s *Store) GetTrip(ctx context.Context, id string) (*Trip, []TripLocation, error) {
 	var t Trip
 	err := s.DB.QueryRowContext(ctx, `
-		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, status, created_at, updated_at
+		SELECT id, title, summary, start_date, end_date, cover_photo_id, sort_order, is_pinned, status, created_at, updated_at
 		FROM trips WHERE id = ?`, id).
 		Scan(&t.ID, &t.Title, &t.Summary, &t.StartDate, &t.EndDate,
-			&t.CoverPhotoID, &t.SortOrder, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+			&t.CoverPhotoID, &t.SortOrder, &t.Pinned, &t.Status, &t.CreatedAt, &t.UpdatedAt)
 	if err == sql.ErrNoRows || (err == nil && t.Status != "published") {
 		return nil, nil, ErrNotFound
 	}

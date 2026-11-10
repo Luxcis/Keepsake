@@ -32,6 +32,7 @@ func (t Trip) MarshalJSON() ([]byte, error) {
 		"cover_photo_id":  nullStr(t.CoverPhotoID),
 		"cover_thumb_src": t.CoverThumbSrc,
 		"sort_order":      t.SortOrder,
+		"pinned":          t.Pinned,
 		"status":          t.Status,
 		"created_at":      t.CreatedAt,
 		"updated_at":      t.UpdatedAt,

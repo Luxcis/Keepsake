@@ -57,6 +57,7 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Put("/admin/trips/{id}", h.updateTrip)
 		r.Delete("/admin/trips/{id}", h.deleteTrip)
 		r.Put("/admin/trips/{id}/locations", h.putTripLocations)
+		r.Put("/admin/trips/{id}/pin", h.setTripPin)
 		r.Get("/admin/trips/{id}/photos", h.adminListTripPhotos)
 		r.Get("/admin/trips/{id}/albums", h.listAlbums)
 		r.Post("/admin/trips/{id}/albums", h.createAlbum)

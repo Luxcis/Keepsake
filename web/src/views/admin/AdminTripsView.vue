@@ -148,6 +148,21 @@ async function toggleStatus(t: Trip) {
   await load()
 }
 
+// 置顶开关：同一时刻最多一个置顶旅行，置顶新旅行会自动取消原置顶。
+async function togglePin(t: Trip) {
+  const next = !t.pinned
+  try {
+    await api.put(`/api/admin/trips/${t.id}/pin`, { pinned: next })
+    message.value = next ? '已置顶（原置顶旅行已自动取消）。' : '已取消置顶。'
+    await load()
+  } catch (err) {
+    message.value = err instanceof Error ? err.message : '置顶操作失败'
+  }
+}
+
+// 表单只读展示置顶状态，置顶操作入口在下方旅行列表行内。
+const currentPinned = computed(() => trips.value.find((t) => t.id === form.id)?.pinned === true)
+
 // 两步确认删除（计划：删除二次确认）
 const confirmDelete = ref('')
 
@@ -262,7 +277,12 @@ const editingExisting = computed(() => form.id !== '')
       </label>
 
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span class="text-[10px] tracking-[0.2em] text-muted">排序：{{ form.sort_order }}</span>
+        <div class="space-y-1">
+          <span class="block text-[10px] tracking-[0.2em] text-muted">排序：{{ form.sort_order }}</span>
+          <span v-if="editingExisting" class="block text-[10px] tracking-[0.2em] text-muted">
+            置顶状态：{{ currentPinned ? '已置顶' : '未置顶' }}（在下方旅行列表行内设置）
+          </span>
+        </div>
         <button type="submit" class="w-full sm:w-auto bg-ink text-paper rounded-full px-6 py-3 min-h-[44px] text-xs tracking-wider hover:bg-moss transition">
           {{ editingExisting ? '保存修改' : '创建旅行' }}
         </button>
@@ -367,12 +387,22 @@ const editingExisting = computed(() => form.id !== '')
             class="w-14 h-11 object-cover rounded-sm border border-line"
           />
           <div>
-            <p class="text-[10px] text-clay tracking-widest">{{ t.start_date }} · {{ t.status === 'published' ? '已发布' : '草稿' }}</p>
+            <p class="text-[10px] text-clay tracking-widest">
+              {{ t.start_date }} · {{ t.status === 'published' ? '已发布' : '草稿' }}
+              <span v-if="t.pinned" class="ml-2 text-moss">已置顶{{ t.status === 'published' ? '' : '（发布后生效）' }}</span>
+            </p>
             <h3 class="section-title text-lg">{{ t.title }}</h3>
             <p class="text-xs text-muted mt-1 max-w-xl line-clamp-2">{{ t.summary }}</p>
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs">
+          <button
+            class="rounded-full px-3 sm:px-4 py-2 min-h-[40px] border transition"
+            :class="t.pinned ? 'bg-moss text-paper border-moss hover:bg-ink' : 'border-line hover:bg-ink hover:text-paper'"
+            @click="togglePin(t)"
+          >
+            {{ t.pinned ? '取消置顶' : '置顶' }}
+          </button>
           <button class="border border-line rounded-full px-3 sm:px-4 py-2 min-h-[40px] hover:bg-ink hover:text-paper transition" @click="startEdit(t)">编辑</button>
           <button class="border border-line rounded-full px-3 sm:px-4 py-2 min-h-[40px] hover:bg-ink hover:text-paper transition" @click="toggleStatus(t)">
             {{ t.status === 'published' ? '转草稿' : '发布' }}

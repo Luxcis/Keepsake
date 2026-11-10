@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api, isGateRequired, type Trip } from '@/api/client'
 import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
@@ -7,6 +7,8 @@ import { bindMotion } from '@/compositions/motion'
 
 // 足迹（计划 §2）：旅行卡片列表；门禁降级；照片卡错落入场（数据到达后触发）。
 const trips = ref<Trip[]>([])
+// 置顶旅行只在时光轴顶部展示，不进入足迹卡片列表。
+const visibleTrips = computed(() => trips.value.filter((t) => !t.pinned))
 const loading = ref(true)
 const error = ref<string | null>(null)
 const gate = ref(false)
@@ -70,15 +72,15 @@ onBeforeUnmount(() => ctx?.revert())
         <PageState
           :loading="loading"
           :error="error"
-          :empty="!loading && !error && trips.length === 0"
+          :empty="!loading && !error && visibleTrips.length === 0"
           empty-title="第一段旅程还没有被记录下来。"
           empty-hint="在管理后台录入你们的第一次旅行，这里就会出现一张张旅程卡片。"
           @retry="load"
         />
 
-        <div v-if="!loading && !error && trips.length" ref="gridRoot" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
+        <div v-if="!loading && !error && visibleTrips.length" ref="gridRoot" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
           <RouterLink
-            v-for="(trip, i) in trips"
+            v-for="(trip, i) in visibleTrips"
             :key="trip.id"
             :to="`/trips/${trip.id}`"
             class="group reveal"

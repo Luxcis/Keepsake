@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api, isGateRequired, type Trip } from '@/api/client'
 import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
@@ -8,6 +8,12 @@ import { bindMotion } from '@/compositions/motion'
 // 时光轴：由已发布旅行自动生成，节点按出发日期从近到远推进。
 // 滚动叙事 —— 中轴线随滚动生长，交替节拍滑入（门禁降级优先；reduced-motion/加载失败 → 静态呈现）。
 const trips = ref<Trip[]>([])
+// 置顶旅行固定在时光轴最顶部且不显示日期；其余旅行保持日期倒序。
+const timelineNodes = computed(() => {
+  const pinned = trips.value.find((t) => t.pinned)
+  const regular = trips.value.filter((t) => !t.pinned)
+  return pinned ? [pinned, ...regular] : regular
+})
 const loading = ref(true)
 const error = ref<string | null>(null)
 const gate = ref(false)
@@ -104,20 +110,20 @@ onBeforeUnmount(() => ctx?.revert())
         <PageState
           :loading="loading"
           :error="error"
-          :empty="!loading && !error && trips.length === 0"
+          :empty="!loading && !error && timelineNodes.length === 0"
           empty-title="时光轴还在等第一段旅程。"
           empty-hint="记录并发布第一段旅行后，这里会自动出现对应的节点。"
           @retry="load"
         />
 
-        <div v-if="!loading && !error && trips.length" class="timeline-wrap relative">
+        <div v-if="!loading && !error && timelineNodes.length" class="timeline-wrap relative">
           <div
             class="timeline-line absolute left-[15px] md:left-1/2 top-0 bottom-0 w-px"
             aria-hidden="true"
           ></div>
           <div class="space-y-12 sm:space-y-14">
             <RouterLink
-              v-for="(trip, i) in trips"
+              v-for="(trip, i) in timelineNodes"
               :key="trip.id"
               :to="`/trips/${trip.id}`"
               class="reveal group relative grid md:grid-cols-2 gap-6 md:gap-10 lg:gap-16 items-center"
@@ -127,7 +133,8 @@ onBeforeUnmount(() => ctx?.revert())
                 aria-hidden="true"
               ></span>
               <div class="pl-12 md:pl-0" :class="i % 2 === 1 ? 'md:order-2' : 'md:text-right'">
-                <p class="eyebrow mb-2">{{ formatDateRange(trip) }}</p>
+                <!-- 置顶节点只在时光轴顶部展示，不显示日期 -->
+                <p v-if="!trip.pinned" class="eyebrow mb-2">{{ formatDateRange(trip) }}</p>
                 <h2 class="section-title text-xl sm:text-2xl">{{ trip.title }}</h2>
                 <p v-if="trip.summary" class="text-sm text-muted leading-7 mt-3">
                   {{ trip.summary }}
