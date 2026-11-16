@@ -23,8 +23,14 @@ func (h *Handlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 开放日期未到：即使口令正确也不发放门禁会话，直接给出具体提示。
-	// 该判断先于限速与口令校验，避免闭站期间泄露口令是否正确。
+	// 先校验口令再判断开放日期：口令错误直接提示口令错误；
+	// 口令正确但未到开放日期时才给出未开放提示，且不发放门禁会话。
+	peer := clientIP(r)
+	if uerr := h.svc.Unlock(r.Context(), peer, in.Password); uerr != nil {
+		h.unlockFail(w, uerr)
+		return
+	}
+
 	open, notOpenMsg, serr := h.siteOpen(r.Context())
 	if serr != nil {
 		mapStoreErr(w, serr)
@@ -32,12 +38,6 @@ func (h *Handlers) unlock(w http.ResponseWriter, r *http.Request) {
 	}
 	if !open {
 		err(w, http.StatusForbidden, "not_open_yet", notOpenMsg)
-		return
-	}
-
-	peer := clientIP(r)
-	if uerr := h.svc.Unlock(r.Context(), peer, in.Password); uerr != nil {
-		h.unlockFail(w, uerr)
 		return
 	}
 

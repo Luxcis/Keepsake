@@ -222,7 +222,17 @@ func TestSiteOpenDate(t *testing.T) {
 		t.Fatalf("code = %s", code)
 	}
 
-	// 3) 正确口令 → 403 not_open_yet，提示带具体开放日期，且不发放门禁会话。
+	// 3) 未开放时错误口令 → 401 gate_mismatch，不返回未开放提示。
+	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"wrong"}`)
+	r.expectStatus(t, http.StatusUnauthorized)
+	if code := r.errorCode(t); code != "gate_mismatch" {
+		t.Fatalf("code = %s", code)
+	}
+	if strings.Contains(string(r.body), "2099 年 1 月 1 日") {
+		t.Fatalf("wrong password should not return not-open message: %s", r.body)
+	}
+
+	// 3a) 正确口令 → 403 not_open_yet，提示带具体开放日期，且不发放门禁会话。
 	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
 	r.expectStatus(t, http.StatusForbidden)
 	if code := r.errorCode(t); code != "not_open_yet" {
@@ -269,6 +279,33 @@ func TestSiteOpenDate(t *testing.T) {
 	r.expectStatus(t, http.StatusOK)
 	r = d.doWith(t, guest, "GET", "/api/trips", "")
 	r.expectStatus(t, http.StatusOK)
+}
+
+func TestUnlockRateLimitedWhileClosed(t *testing.T) {
+	d := newStack(t)
+	guest := visitorClient(t)
+
+	// 管理员登录并设置未来开放日期。
+	r := d.do(t, "POST", "/api/auth/login", `{"username":"admin","password":"secret123"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2099-01-01"}`)
+	r.expectStatus(t, http.StatusOK)
+
+	// 限速窗口内的错误口令仍按口令错误处理。
+	for i := 0; i < 10; i++ {
+		r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"wrong"}`)
+		r.expectStatus(t, http.StatusUnauthorized)
+		if code := r.errorCode(t); code != "gate_mismatch" {
+			t.Fatalf("attempt %d code = %s", i+1, code)
+		}
+	}
+
+	// 超出限速后，即使口令正确也返回 rate_limited，而不是未开放提示。
+	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r.expectStatus(t, http.StatusTooManyRequests)
+	if code := r.errorCode(t); code != "rate_limited" {
+		t.Fatalf("code = %s", code)
+	}
 }
 
 func TestAdminFullFlow(t *testing.T) {
