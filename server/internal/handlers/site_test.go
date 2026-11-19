@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// siteOpenStatus 按 Asia/Shanghai 自然日判定开放日期；边界必须精确到零点。
-func TestSiteOpenStatus(t *testing.T) {
+// openDateStatus 按 Asia/Shanghai 自然日判定开放日期；边界必须精确到零点。
+func TestOpenDateStatus(t *testing.T) {
 	cst := siteTimeZone
 	cases := []struct {
 		name     string
@@ -27,7 +27,7 @@ func TestSiteOpenStatus(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			open, dateLabel := siteOpenStatus(tc.openDate, tc.now)
+			open, dateLabel := openDateStatus(tc.openDate, tc.now)
 			if open != tc.wantOpen {
 				t.Fatalf("open = %v, want %v", open, tc.wantOpen)
 			}
@@ -52,12 +52,12 @@ func TestRenderNotOpenMessage(t *testing.T) {
 		{
 			"空串使用默认文案",
 			"",
-			"还没到打开的时候哦。等到 2026 年 11 月 22 日，这里就会为你打开，到时候再来输入口令吧。",
+			"还没到打开的时候哦。等到 2026 年 11 月 22 日，这封信就会为你打开，到时候再来看看吧。",
 		},
 		{
 			"空白使用默认文案",
 			"   ",
-			"还没到打开的时候哦。等到 2026 年 11 月 22 日，这里就会为你打开，到时候再来输入口令吧。",
+			"还没到打开的时候哦。等到 2026 年 11 月 22 日，这封信就会为你打开，到时候再来看看吧。",
 		},
 		{
 			"占位符替换",

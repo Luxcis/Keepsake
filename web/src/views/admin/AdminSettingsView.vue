@@ -13,7 +13,7 @@ const fields = reactive<SiteSettings>({
 })
 const gateEnabled = ref(false)
 const sitePassword = ref('') // 仅绑新值；空串不提交
-// 开放日期（YYYY-MM-DD）：设置后，日期之前前台无法解锁；空串表示不限制。
+// 开放日期（YYYY-MM-DD）：设置后，日期之前生日信不可读；空串表示不限制。
 const openDate = ref('')
 // 未开放提示语：留空使用默认文案；{date} 会替换为开放日期。
 const notOpenMessage = ref('')
@@ -76,8 +76,8 @@ async function save() {
 
     <div class="text-xs text-muted space-y-1">
       <p>门禁状态：{{ gateEnabled ? '已启用（未输口令的访客无法阅读私人内容）' : '未启用（建议尽快设置口令）' }}</p>
-      <p>口令未启用时，若已过开放日期（或未设置），前台内容对知道地址的所有人开放。</p>
-      <p>开放日期：{{ openDate || '未设置（随时可解锁）' }}。日期未到时即使口令正确也无法解锁，管理员登录后仍可预览。</p>
+      <p>口令未启用时，前台内容对知道地址的所有人开放。</p>
+      <p>开放日期：{{ openDate || '未设置（生日信随时可读）' }}。日期未到时，访客即使已解锁也无法阅读生日信；旅行、时光轴等其它内容不受影响。管理员登录后仍可预览。</p>
     </div>
 
     <form class="bg-paper border border-line rounded-sm p-4 sm:p-6 space-y-4" @submit.prevent="save">
@@ -120,7 +120,7 @@ async function save() {
           class="mt-1 w-full border border-line rounded-sm bg-white/70 px-3 py-2.5 text-sm"
         />
         <span class="mt-1 block text-[10px] text-muted leading-5">
-          开放日当天 00:00（北京时间）起可解锁；留空表示不限制。日期之前即使口令正确也会提示尚未开放。
+          开放日当天 00:00（北京时间）起可阅读生日信；留空表示不限制。日期之前访客即使已解锁也无法阅读生日信，其它前台内容不受影响。
         </span>
       </label>
 
@@ -130,11 +130,11 @@ async function save() {
           v-model="notOpenMessage"
           rows="2"
           maxlength="200"
-          placeholder="还没到打开的时候哦。等到 {date}，这里就会为你打开，到时候再来输入口令吧。"
+          placeholder="还没到打开的时候哦。等到 {date}，这封信就会为你打开，到时候再来看看吧。"
           class="mt-1 w-full border border-line rounded-sm bg-white/70 px-3 py-2.5 text-sm"
         ></textarea>
         <span class="mt-1 block text-[10px] text-muted leading-5">
-          仅在设置开放日期后展示。留空使用默认文案；可用 {date} 插入开放日期，例如“等到 {date}，这里就会为你打开”。
+          仅在设置开放日期后用于生日信未开放提示。留空使用默认文案；可用 {date} 插入开放日期，例如“等到 {date}，这里就会为你打开”。
         </span>
       </label>
 

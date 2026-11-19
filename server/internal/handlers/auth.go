@@ -23,21 +23,10 @@ func (h *Handlers) unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 先校验口令再判断开放日期：口令错误直接提示口令错误；
-	// 口令正确但未到开放日期时才给出未开放提示，且不发放门禁会话。
+	// 口令正确即发放门禁会话；开放日期只限制生日信，不阻塞站点解锁。
 	peer := clientIP(r)
 	if uerr := h.svc.Unlock(r.Context(), peer, in.Password); uerr != nil {
 		h.unlockFail(w, uerr)
-		return
-	}
-
-	open, notOpenMsg, serr := h.siteOpen(r.Context())
-	if serr != nil {
-		mapStoreErr(w, serr)
-		return
-	}
-	if !open {
-		err(w, http.StatusForbidden, "not_open_yet", notOpenMsg)
 		return
 	}
 

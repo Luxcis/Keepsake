@@ -122,7 +122,19 @@ func (h *Handlers) getTrip(w http.ResponseWriter, r *http.Request) {
 }
 
 // getLetter：门禁已解锁后可读（计划 §2 生日信页）。
+// 开放日期只限制生日信：非管理员在开放日之前读取时返回 not_open_yet 与提示语。
 func (h *Handlers) getLetter(w http.ResponseWriter, r *http.Request) {
+	if _, admin := adminFromCtx(r); !admin {
+		open, msg, serr := h.letterOpen(r.Context())
+		if serr != nil {
+			mapStoreErr(w, serr)
+			return
+		}
+		if !open {
+			err(w, http.StatusForbidden, "not_open_yet", msg)
+			return
+		}
+	}
 	letter, err := h.st.GetLetter(r.Context())
 	if err != nil {
 		mapStoreErr(w, err)

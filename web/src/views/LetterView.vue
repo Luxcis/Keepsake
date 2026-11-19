@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { api, isGateRequired, type Letter as LetterData } from '@/api/client'
+import { api, ApiError, isGateRequired, isNotOpenYet, type Letter as LetterData } from '@/api/client'
 import PageState from '@/components/PageState.vue'
 import GatePrompt from '@/components/GatePrompt.vue'
 import LetterCard from '@/components/LetterCard.vue'
+import NotOpenDialog from '@/components/NotOpenDialog.vue'
 import { bindMotion } from '@/compositions/motion'
 
-// 生日信（计划 §2/§4.2）：门禁后可读。拆信动画分四段 —— 翻开封口 → 露出折起的
-// 空白信纸 → 信纸向上抽出、信封下移淡出 → 信纸展开并淡入正文。
-// reduced-motion 或 GSAP 加载失败时点击直接呈现信纸；折叠态只显示纸面，
-// 正文在展开阶段淡入，避免出现「折起来还能读正文」的错位。
+// 生日信（计划 §2/§4.2）：门禁后可读；开放日期未到时只拦截这封信。
+// 拆信动画分四段 —— 翻开封口 → 露出折起的空白信纸 → 信纸向上抽出、信封下移淡出
+// → 信纸展开并淡入正文。reduced-motion 或 GSAP 加载失败时点击直接呈现信纸；
+// 折叠态只显示纸面，正文在展开阶段淡入，避免出现「折起来还能读正文」的错位。
 const letter = ref<LetterData | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const gate = ref(false)
+// 开放日期未到：letterBlocked 保留页面占位，notOpenDialog 承载一次性弹窗文案。
+const letterBlocked = ref(false)
+const notOpenDialog = ref<string | null>(null)
 const phase = ref<'closed' | 'animating' | 'done'>('closed')
 
 const scene = ref<HTMLElement | null>(null)
@@ -27,11 +31,19 @@ let ctx: { revert(): void } | null = null
 async function load() {
   loading.value = true
   error.value = null
+  letterBlocked.value = false
+  notOpenDialog.value = null
   try {
     letter.value = await api.get<LetterData>('/api/letter')
   } catch (err) {
     if (isGateRequired(err)) {
       gate.value = true
+    } else if (isNotOpenYet(err)) {
+      // 口令已通过、只是还没到开放日期：弹窗展示提示，页面保留占位。
+      letter.value = null
+      letterBlocked.value = true
+      notOpenDialog.value =
+        (err instanceof ApiError && err.message) || '还没到打开的时候哦，再耐心等一等吧。'
     } else {
       error.value = err instanceof Error ? err.message : '加载失败'
     }
@@ -132,11 +144,21 @@ onBeforeUnmount(() => ctx?.revert())
         <PageState
           :loading="loading"
           :error="error"
-          :empty="!loading && !error && !letter"
+          :empty="!loading && !error && !letter && !letterBlocked"
           empty-title="这封信还没有写好。"
           empty-hint="它在管理后台的“生日信”里等待落笔。"
           @retry="load"
         />
+
+        <!-- 未到开放日期：弹窗提示一次，关闭后保留占位，信件内容不可见 -->
+        <div
+          v-if="letterBlocked && !letter"
+          class="max-w-md mx-auto bg-paper rounded-sm shadow-soft p-8 sm:p-10 text-center"
+        >
+          <p class="eyebrow mb-3">NOT YET</p>
+          <h2 class="section-title text-2xl mb-3">还没到打开的时候</h2>
+          <p class="text-xs text-muted leading-6">这封信会在开放日那天打开，到时候再来看看吧。</p>
+        </div>
 
         <template v-if="letter">
           <!-- 信封与揭晓：信纸始终是同一份 LetterCard，折叠态只是裁切 + 位移 -->
@@ -191,6 +213,12 @@ onBeforeUnmount(() => ctx?.revert())
         </template>
       </template>
     </div>
+
+    <NotOpenDialog
+      v-if="notOpenDialog"
+      :message="notOpenDialog"
+      @close="notOpenDialog = null"
+    />
   </section>
 </template>
 

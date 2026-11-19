@@ -193,47 +193,37 @@ func TestUnlockGateFlow(t *testing.T) {
 	r.expectStatus(t, http.StatusNotFound)
 }
 
-// TestSiteOpenDate：开放日期之前即使口令正确也不能解锁，且已有门禁会话被拦截；
-// 管理员会话仍可预览；清空开放日期后恢复。
-func TestSiteOpenDate(t *testing.T) {
+// TestOpenDateRestrictsLetterOnly：开放日期只限制生日信；站点解锁、旅行等内容不受影响。
+// 管理员会话可预览生日信；清空开放日期后访客恢复可读。
+func TestOpenDateRestrictsLetterOnly(t *testing.T) {
 	d := newStack(t)
 
 	// 访客使用独立 Cookie 罐，避免被管理员会话豁免。
 	guest := visitorClient(t)
 
-	// 管理员登录（管理员会话可绕过门禁与开放日期）。
+	// 管理员登录并写一封信（管理员会话可绕过门禁与开放日期）。
 	r := d.do(t, "POST", "/api/auth/login", `{"username":"admin","password":"secret123"}`)
 	r.expectStatus(t, http.StatusOK)
+	r = d.do(t, "PUT", "/api/admin/letter",
+		`{"title":"For You","body":"生日快乐。","reveal_enabled":true}`)
+	r.expectStatus(t, http.StatusOK)
 
-	// 1) 过去的开放日期视为已开放：访客正常解锁并读取内容。
+	// 1) 过去的开放日期视为已开放：访客解锁后旅行与生日信都可读。
 	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2020-01-01"}`)
 	r.expectStatus(t, http.StatusOK)
 	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
 	r.expectStatus(t, http.StatusOK)
 	r = d.doWith(t, guest, "GET", "/api/trips", "")
 	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "GET", "/api/letter", "")
+	r.expectStatus(t, http.StatusOK)
 
-	// 2) 改为未来日期：已持有的门禁 Cookie 也不再放行。
+	// 2) 改为未来日期：站点解锁与旅行不受影响，生日信被拦截并提示具体日期。
 	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2099-01-01"}`)
 	r.expectStatus(t, http.StatusOK)
 	r = d.doWith(t, guest, "GET", "/api/trips", "")
-	r.expectStatus(t, http.StatusUnauthorized)
-	if code := r.errorCode(t); code != "gate_required" {
-		t.Fatalf("code = %s", code)
-	}
-
-	// 3) 未开放时错误口令 → 401 gate_mismatch，不返回未开放提示。
-	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"wrong"}`)
-	r.expectStatus(t, http.StatusUnauthorized)
-	if code := r.errorCode(t); code != "gate_mismatch" {
-		t.Fatalf("code = %s", code)
-	}
-	if strings.Contains(string(r.body), "2099 年 1 月 1 日") {
-		t.Fatalf("wrong password should not return not-open message: %s", r.body)
-	}
-
-	// 3a) 正确口令 → 403 not_open_yet，提示带具体开放日期，且不发放门禁会话。
-	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r.expectStatus(t, http.StatusOK)
+	r = d.doWith(t, guest, "GET", "/api/letter", "")
 	r.expectStatus(t, http.StatusForbidden)
 	if code := r.errorCode(t); code != "not_open_yet" {
 		t.Fatalf("code = %s", code)
@@ -242,21 +232,27 @@ func TestSiteOpenDate(t *testing.T) {
 		t.Fatalf("message should carry open date: %s", r.body)
 	}
 
-	// 3b) 自定义未开放提示语：{date} 替换为开放日期。
+	// 3) 未来开放日期不阻塞解锁：正确口令仍发放门禁会话。
+	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r.expectStatus(t, http.StatusOK)
+
+	// 4) 自定义未开放提示语：{date} 替换为开放日期。
 	r = d.do(t, "PUT", "/api/admin/site/settings",
 		`{"not_open_message":"先别急，{date} 再见。"}`)
 	r.expectStatus(t, http.StatusOK)
-	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r = d.doWith(t, guest, "GET", "/api/letter", "")
 	r.expectStatus(t, http.StatusForbidden)
 	if !strings.Contains(string(r.body), "先别急，2099 年 1 月 1 日 再见。") {
 		t.Fatalf("custom message = %s", r.body)
 	}
 
-	// 4) 管理员仍可预览私人内容。
+	// 5) 管理员仍可预览生日信与旅行。
+	r = d.do(t, "GET", "/api/letter", "")
+	r.expectStatus(t, http.StatusOK)
 	r = d.do(t, "GET", "/api/trips", "")
 	r.expectStatus(t, http.StatusOK)
 
-	// 5) 公开设置返回 open_date，供管理端设置页回填。
+	// 6) 公开设置返回 open_date，供管理端设置页回填。
 	r = d.do(t, "GET", "/api/site/settings", "")
 	r.expectStatus(t, http.StatusOK)
 	data, _ := r.decode(t)["data"].(map[string]any)
@@ -268,40 +264,35 @@ func TestSiteOpenDate(t *testing.T) {
 		t.Fatalf("not_open_message = %v", settings["not_open_message"])
 	}
 
-	// 6) 非法日期 → 400。
+	// 7) 非法日期 → 400。
 	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2099/01/01"}`)
 	r.expectStatus(t, http.StatusBadRequest)
 
-	// 7) 清空开放日期 → 恢复解锁。
+	// 8) 清空开放日期 → 生日信恢复可读。
 	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":""}`)
 	r.expectStatus(t, http.StatusOK)
-	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	r = d.doWith(t, guest, "GET", "/api/letter", "")
 	r.expectStatus(t, http.StatusOK)
-	r = d.doWith(t, guest, "GET", "/api/trips", "")
-	r.expectStatus(t, http.StatusOK)
+	if m := r.decode(t); m["data"].(map[string]any)["body"] != "生日快乐。" {
+		t.Fatalf("letter body = %s", r.body)
+	}
 }
 
-func TestUnlockRateLimitedWhileClosed(t *testing.T) {
+func TestUnlockRateLimited(t *testing.T) {
 	d := newStack(t)
 	guest := visitorClient(t)
 
-	// 管理员登录并设置未来开放日期。
-	r := d.do(t, "POST", "/api/auth/login", `{"username":"admin","password":"secret123"}`)
-	r.expectStatus(t, http.StatusOK)
-	r = d.do(t, "PUT", "/api/admin/site/settings", `{"open_date":"2099-01-01"}`)
-	r.expectStatus(t, http.StatusOK)
-
-	// 限速窗口内的错误口令仍按口令错误处理。
+	// 限速窗口内的错误口令按口令错误处理。
 	for i := 0; i < 10; i++ {
-		r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"wrong"}`)
+		r := d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"wrong"}`)
 		r.expectStatus(t, http.StatusUnauthorized)
 		if code := r.errorCode(t); code != "gate_mismatch" {
 			t.Fatalf("attempt %d code = %s", i+1, code)
 		}
 	}
 
-	// 超出限速后，即使口令正确也返回 rate_limited，而不是未开放提示。
-	r = d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
+	// 超出限速后，即使口令正确也返回 rate_limited。
+	r := d.doWith(t, guest, "POST", "/api/site/unlock", `{"password":"gatepass"}`)
 	r.expectStatus(t, http.StatusTooManyRequests)
 	if code := r.errorCode(t); code != "rate_limited" {
 		t.Fatalf("code = %s", code)

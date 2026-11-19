@@ -98,8 +98,8 @@ func (s *Store) GetTrip(ctx context.Context, id string) (*Trip, []TripLocation, 
 }
 
 // SettingsWhitelist：站点配置中允许公开返回的字段（计划 §4.2）。
-// open_date 为站点开放日期（YYYY-MM-DD，空表示不限制）；
-// not_open_message 为未开放时的提示语（支持 {date} 占位符），前端设置页与锁页共用。
+// open_date 为生日信开放日期（YYYY-MM-DD，空表示不限制）；
+// not_open_message 为未开放时的提示语（支持 {date} 占位符），管理端设置页与生日信页共用。
 var SettingsWhitelist = []string{
 	"site_title", "hero_kicker", "hero_title", "hero_subtitle", "hero_cta", "site_motto",
 	"open_date", "not_open_message",

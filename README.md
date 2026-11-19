@@ -118,10 +118,10 @@ docker compose down
 | POST | `/api/auth/login`·`/logout` | 公开（限速） | Argon2id 校验 + 会话 |
 | GET | `/api/auth/me` | 管理员 | 当前账号 |
 | GET | `/api/trips`·`/trips/{id}` | 门禁 | 发布内容读取（列表按出发日期倒序） |
-| GET | `/api/letter` | 门禁 | 生日信 |
+| GET | `/api/letter` | 门禁 | 生日信（开放日期前返回 `403 not_open_yet`） |
 | POST/PUT/DELETE | `/api/admin/trips`（含 `{id}/locations`、`{id}/albums`） | 管理员 | 旅行/地点/相册 CRUD |
 | PUT | `/api/admin/letter` | 管理员 | 信件 upsert |
-| PUT | `/api/admin/site/settings` | 管理员 | 白名单字段 + 口令哈希化 + 开放日期 `open_date` + 未开放提示语 `not_open_message` |
+| PUT | `/api/admin/site/settings` | 管理员 | 白名单字段 + 口令哈希化 + 生日信开放日期 `open_date` + 未开放提示语 `not_open_message` |
 | — | `/api/trips/{id}/photos`、`/api/admin/uploads/sign`、`/api/admin/photos/confirm` | — | **501**：COS 与后台阶段（11/13–11/15）实现 |
 
 ### 安全语义（计划 §3.2 / §5.1）
@@ -129,7 +129,7 @@ docker compose down
 - **失败关闭**：`REDIS_ADDR` 已配置但不可达时，登录/解锁/管理端会话读取返回 `503 backend_unavailable`，不放行。
 - **可选降级**：未配置 Redis 时使用进程内存会话与限速（本站为单实例部署的合法形态；容器重启后需重新登录，且限速计数清零。多实例部署才必须启用 Redis）。
 - **CSRF**：SameSite=Lax Cookie + “不安全方法携带 Origin/Referer 时必须同源（感知 X-Forwarded-Proto）”双层防护。
-- **开放日期**：管理端设置 `open_date`（`YYYY-MM-DD`，按北京时间自然日）后，日期之前前台即使输入正确口令也不解锁，返回 `403 not_open_yet` 并提示具体日期；已持有的门禁会话同样被拦截，管理员会话可预览。提示语文案可用 `not_open_message` 自定义（支持 `{date}` 占位符，留空使用默认文案）。
+- **生日信开放日期**：管理端设置 `open_date`（`YYYY-MM-DD`，按北京时间自然日）后，日期之前访客读取 `/api/letter` 返回 `403 not_open_yet` 并提示具体日期；站点解锁与旅行、时光轴等其它内容不受影响。管理员会话可预览。提示语文案可用 `not_open_message` 自定义（支持 `{date}` 占位符，留空使用默认文案）。
 
 ## 照片上传链路（本地存储 / COS）
 

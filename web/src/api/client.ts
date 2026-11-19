@@ -58,6 +58,11 @@ export function isGateRequired(err: unknown): boolean {
   return err instanceof ApiError && err.code === 'gate_required'
 }
 
+// 生日信未到开放日期：后端 403 not_open_yet 时，页面展示未开放提示。
+export function isNotOpenYet(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'not_open_yet'
+}
+
 // ---------- 领域类型（计划 §4.1） ----------
 
 export interface Trip {
