@@ -77,14 +77,10 @@ const showStory = computed(() => !!trip.value?.summary)
 const viewable = computed<LightboxPhoto[]>(() =>
   photos.value.flatMap((p): LightboxPhoto[] => {
     if (p.media_kind === 'video') {
-      return p.video_src
-        ? [{ id: p.id, src: p.video_src, mediaKind: 'video', caption: p.title ?? undefined }]
-        : []
+      return p.video_src ? [{ id: p.id, src: p.video_src, mediaKind: 'video' }] : []
     }
     const display = p.preview_src || p.src
-    return display
-      ? [{ id: p.id, src: display, videoSrc: p.video_src || undefined, caption: p.title ?? undefined }]
-      : []
+    return display ? [{ id: p.id, src: display, videoSrc: p.video_src || undefined }] : []
   }),
 )
 
@@ -188,7 +184,7 @@ onBeforeUnmount(() => ctx?.revert())
                   <img
                     v-else-if="p.thumb_src"
                     :src="p.thumb_src"
-                    :alt="p.title"
+                    alt="旅行照片"
                     loading="lazy"
                     class="w-full h-full object-cover transition duration-700 group-hover:scale-[1.03]"
                   />
@@ -203,11 +199,6 @@ onBeforeUnmount(() => ctx?.revert())
                     class="absolute top-3 left-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-[11px] text-white"
                     aria-hidden="true"
                     >▶</span
-                  >
-                  <span
-                    v-if="p.title"
-                    class="absolute bottom-0 inset-x-0 z-20 p-4 text-left text-white bg-gradient-to-t from-black/55 to-transparent text-xs"
-                    >{{ p.title }}</span
                   >
                 </button>
               </div>

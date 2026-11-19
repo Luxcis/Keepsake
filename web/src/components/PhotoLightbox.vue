@@ -66,7 +66,7 @@ function onLiveError(type: string) {
 }
 
 // 切换照片后立刻清掉上一张的残影：浏览器会保留旧帧直到新图解码完成，
-// 原图较大时看起来就成了“只换了名字、照片没换”。配合 img 的 :key 换掉整个元素，
+// 原图较大时看起来就成了“照片没换”。配合 img 的 :key 换掉整个元素，
 // 加载期间明确显示“加载中”。
 watch(
   () => current.value?.src,
@@ -182,7 +182,7 @@ onBeforeUnmount(() => {
             v-else-if="current && !failed"
             :key="current.src"
             :src="current.src"
-            :alt="current.caption ?? '照片预览'"
+            alt="照片预览"
             class="lb-media max-w-full mx-auto object-contain"
             @load="onLoad"
             @error="onError"
@@ -192,9 +192,6 @@ onBeforeUnmount(() => {
             内容加载失败，刷新页面后再试一次。
           </p>
         </div>
-        <p v-if="current?.caption" class="text-white/75 text-xs tracking-wider mt-4 sm:mt-5 px-2">
-          {{ current.caption }}
-        </p>
       </div>
       <button class="lb-nav lb-next" aria-label="下一张" @click="step(1)">›</button>
       </div>

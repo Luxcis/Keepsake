@@ -151,7 +151,6 @@ export interface LightboxPhoto {
   videoSrc?: string
   // video 表示 src 是视频播放地址，灯箱使用原生视频播放器。
   mediaKind?: MediaKind
-  caption?: string
 }
 
 export interface UploadSignResponse {
